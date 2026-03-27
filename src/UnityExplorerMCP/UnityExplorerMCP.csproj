@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>MCP server integration for UnityExplorer in KSP</Description>
+
+    <KSPBT_ModRoot>$(GameDataOutDir)</KSPBT_ModRoot>
+    <KSPBT_ModPluginFolder>Plugins</KSPBT_ModPluginFolder>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="KSPBuildTools" Version="1.1.0" />
+
+    <PackageReference Include="Krafs.Publicizer" Version="2.3.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+
+    <Reference Include="HarmonyKSP">
+      <HintPath>$(DepSet1)/000_Harmony/0Harmony.dll</HintPath>
+      <Private>false</Private>
+      <KSPAssemblyName>HarmonyKSP</KSPAssemblyName>
+      <KSPAssemblyVersion>0.0.0</KSPAssemblyVersion>
+      <GenerateDependencyAttribute>true</GenerateDependencyAttribute>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Publicize Include="Assembly-CSharp" />
+  </ItemGroup>
+
+  <!--
+    It's really easy for old binaries to stick around in GameData and bin
+    directories. This step makes sure that doesn't happen.
+  -->
+  <Target Name="GameDataPostClean" AfterTargets="Clean">
+    <!--
+      Make sure to delete the output mod directory on clean so we don't have
+      outdated artifacts lying around.
+    -->
+    <RemoveDir Directories="$(GameDataOutDir)" />
+    <!--
+      KSP gets borked if there are invalid junctions in GameData. We fix this
+      by recreating the directory after we delete it.
+    -->
+    <MakeDir Directories="$(GameDataOutDir)" />
+  </Target>
+
+  <Target Name="CopyExtrasToPluginFolder" AfterTargets="KSPBT_CopyDLLsToPluginFolder">
+    <ItemGroup>
+      <_ExtrasToCopy Include="$(TargetDir)/**/*.pdb" />
+      <_ExtrasToCopy Include="$(TargetDir)/**/*.xml" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_ExtrasToCopy)" DestinationFolder="$(KSPBT_ModRoot)/$(KSPBT_ModPluginFolder)/%(RecursiveDir)" />
+  </Target>
+</Project>
