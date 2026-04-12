@@ -5,7 +5,7 @@
         <!-- The version used for all libraries in this project. -->
         <Version>0.1.0</Version>
 
-        <TargetFramework>net481</TargetFramework>
+        <TargetFramework>net462</TargetFramework>
         <LangVersion>preview</LangVersion>
 
         <DebugType>portable</DebugType>
