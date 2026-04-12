@@ -1,6 +1,7 @@
 using System.Collections.Generic;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace UnityExplorerMCP.Server
 {
@@ -12,47 +13,52 @@ namespace UnityExplorerMCP.Server
         public const string JsonRpcVersion = "2.0";
         public const string McpProtocolVersion = "2024-11-05";
 
+        static readonly JsonSerializerOptions IndentedOptions = new() { WriteIndented = true };
+
         #region JSON-RPC Messages
 
         public class JsonRpcRequest
         {
-            [JsonProperty("jsonrpc")]
+            [JsonPropertyName("jsonrpc")]
             public string JsonRpc { get; set; } = JsonRpcVersion;
 
-            [JsonProperty("id")]
+            [JsonPropertyName("id")]
             public object Id { get; set; }
 
-            [JsonProperty("method")]
+            [JsonPropertyName("method")]
             public string Method { get; set; }
 
-            [JsonProperty("params")]
-            public JObject Params { get; set; }
+            [JsonPropertyName("params")]
+            public JsonObject Params { get; set; }
         }
 
         public class JsonRpcResponse
         {
-            [JsonProperty("jsonrpc")]
+            [JsonPropertyName("jsonrpc")]
             public string JsonRpc { get; set; } = JsonRpcVersion;
 
-            [JsonProperty("id")]
+            [JsonPropertyName("id")]
             public object Id { get; set; }
 
-            [JsonProperty("result", NullValueHandling = NullValueHandling.Ignore)]
+            [JsonPropertyName("result")]
+            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public object Result { get; set; }
 
-            [JsonProperty("error", NullValueHandling = NullValueHandling.Ignore)]
+            [JsonPropertyName("error")]
+            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public JsonRpcError Error { get; set; }
         }
 
         public class JsonRpcError
         {
-            [JsonProperty("code")]
+            [JsonPropertyName("code")]
             public int Code { get; set; }
 
-            [JsonProperty("message")]
+            [JsonPropertyName("message")]
             public string Message { get; set; }
 
-            [JsonProperty("data", NullValueHandling = NullValueHandling.Ignore)]
+            [JsonPropertyName("data")]
+            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public object Data { get; set; }
         }
 
@@ -62,34 +68,35 @@ namespace UnityExplorerMCP.Server
 
         public class InitializeResult
         {
-            [JsonProperty("protocolVersion")]
+            [JsonPropertyName("protocolVersion")]
             public string ProtocolVersion { get; set; } = McpProtocolVersion;
 
-            [JsonProperty("capabilities")]
+            [JsonPropertyName("capabilities")]
             public ServerCapabilities Capabilities { get; set; } = new();
 
-            [JsonProperty("serverInfo")]
+            [JsonPropertyName("serverInfo")]
             public ServerInfo ServerInfo { get; set; } = new();
         }
 
         public class ServerCapabilities
         {
-            [JsonProperty("tools", NullValueHandling = NullValueHandling.Ignore)]
+            [JsonPropertyName("tools")]
+            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public ToolsCapability Tools { get; set; } = new();
         }
 
         public class ToolsCapability
         {
-            [JsonProperty("listChanged")]
+            [JsonPropertyName("listChanged")]
             public bool ListChanged { get; set; } = false;
         }
 
         public class ServerInfo
         {
-            [JsonProperty("name")]
+            [JsonPropertyName("name")]
             public string Name { get; set; } = "unity-explorer-mcp";
 
-            [JsonProperty("version")]
+            [JsonPropertyName("version")]
             public string Version { get; set; } = "0.1.0";
         }
 
@@ -99,46 +106,46 @@ namespace UnityExplorerMCP.Server
 
         public class ToolDefinition
         {
-            [JsonProperty("name")]
+            [JsonPropertyName("name")]
             public string Name { get; set; }
 
-            [JsonProperty("description")]
+            [JsonPropertyName("description")]
             public string Description { get; set; }
 
-            [JsonProperty("inputSchema")]
-            public JObject InputSchema { get; set; }
+            [JsonPropertyName("inputSchema")]
+            public JsonObject InputSchema { get; set; }
         }
 
         public class ToolsListResult
         {
-            [JsonProperty("tools")]
+            [JsonPropertyName("tools")]
             public List<ToolDefinition> Tools { get; set; } = new();
         }
 
         public class ToolCallParams
         {
-            [JsonProperty("name")]
+            [JsonPropertyName("name")]
             public string Name { get; set; }
 
-            [JsonProperty("arguments")]
-            public JObject Arguments { get; set; }
+            [JsonPropertyName("arguments")]
+            public JsonObject Arguments { get; set; }
         }
 
         public class ToolCallResult
         {
-            [JsonProperty("content")]
+            [JsonPropertyName("content")]
             public List<ToolContent> Content { get; set; } = new();
 
-            [JsonProperty("isError")]
+            [JsonPropertyName("isError")]
             public bool IsError { get; set; }
         }
 
         public class ToolContent
         {
-            [JsonProperty("type")]
+            [JsonPropertyName("type")]
             public string Type { get; set; } = "text";
 
-            [JsonProperty("text")]
+            [JsonPropertyName("text")]
             public string Text { get; set; }
         }
 
@@ -168,9 +175,13 @@ namespace UnityExplorerMCP.Server
 
         public static ToolCallResult ToolSuccess(object result)
         {
-            string text = result is string s
-                ? s
-                : JsonConvert.SerializeObject(result, Formatting.Indented);
+            string text;
+            if (result is string s)
+                text = s;
+            else if (result is JsonNode node)
+                text = node.ToJsonString(IndentedOptions);
+            else
+                text = JsonSerializer.Serialize(result, result.GetType(), IndentedOptions);
             return new ToolCallResult { Content = new List<ToolContent> { new() { Text = text } } };
         }
 

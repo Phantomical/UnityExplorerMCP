@@ -1,5 +1,5 @@
 using System.Linq;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using UnityEngine;
 using UnityExplorerMCP.Server;
 
@@ -62,7 +62,7 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult GetGameObject(JObject args)
+        McpProtocol.ToolCallResult GetGameObject(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
             var go = ResolveGameObject(handle);
@@ -72,13 +72,13 @@ namespace UnityExplorerMCP.Tools
             var transform = go.transform;
 
             // Children (first 20)
-            var children = new JArray();
+            var children = new JsonArray();
             int childCount = transform.childCount;
             for (int i = 0; i < childCount && i < 20; i++)
             {
                 var child = transform.GetChild(i);
                 children.Add(
-                    new JObject
+                    new JsonObject
                     {
                         ["objectHandle"] = Registry.Register(child.gameObject),
                         ["name"] = child.name,
@@ -89,7 +89,7 @@ namespace UnityExplorerMCP.Tools
             }
 
             // Components
-            var components = new JArray();
+            var components = new JsonArray();
             foreach (var comp in go.GetComponents<Component>())
             {
                 if (comp == null)
@@ -97,7 +97,7 @@ namespace UnityExplorerMCP.Tools
                 var compType = comp.GetType();
                 bool isBehaviour = comp is Behaviour;
                 components.Add(
-                    new JObject
+                    new JsonObject
                     {
                         ["objectHandle"] = Registry.Register(comp),
                         ["typeName"] = compType.Name,
@@ -109,7 +109,7 @@ namespace UnityExplorerMCP.Tools
             }
 
             return McpProtocol.ToolSuccess(
-                new JObject
+                new JsonObject
                 {
                     ["objectHandle"] = handle,
                     ["instanceId"] = go.GetInstanceID(),
@@ -123,7 +123,7 @@ namespace UnityExplorerMCP.Tools
                     ["sceneName"] = go.scene.IsValid() ? go.scene.name : "DontDestroyOnLoad",
                     ["hideFlags"] = go.hideFlags.ToString(),
                     ["path"] = GetFullPath(transform),
-                    ["transform"] = new JObject
+                    ["transform"] = new JsonObject
                     {
                         ["position"] = Vec3(transform.position),
                         ["localPosition"] = Vec3(transform.localPosition),
@@ -142,14 +142,14 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult SetGameObject(JObject args)
+        McpProtocol.ToolCallResult SetGameObject(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
             var go = ResolveGameObject(handle);
             if (go == null)
                 return HandleNotFound(handle);
 
-            var updated = new JArray();
+            var updated = new JsonArray();
 
             if (HasKey(args, "name"))
             {
@@ -178,7 +178,7 @@ namespace UnityExplorerMCP.Tools
             }
 
             return McpProtocol.ToolSuccess(
-                new JObject
+                new JsonObject
                 {
                     ["success"] = true,
                     ["objectHandle"] = handle,
@@ -187,7 +187,7 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult GetTransform(JObject args)
+        McpProtocol.ToolCallResult GetTransform(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
             var go = ResolveGameObject(handle);
@@ -196,12 +196,12 @@ namespace UnityExplorerMCP.Tools
 
             var t = go.transform;
             return McpProtocol.ToolSuccess(
-                new JObject
+                new JsonObject
                 {
                     ["objectHandle"] = handle,
                     ["position"] = Vec3(t.position),
                     ["localPosition"] = Vec3(t.localPosition),
-                    ["rotation"] = new JObject
+                    ["rotation"] = new JsonObject
                     {
                         ["x"] = t.rotation.x,
                         ["y"] = t.rotation.y,
@@ -218,7 +218,7 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult SetTransform(JObject args)
+        McpProtocol.ToolCallResult SetTransform(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
             var go = ResolveGameObject(handle);
@@ -226,31 +226,31 @@ namespace UnityExplorerMCP.Tools
                 return HandleNotFound(handle);
 
             var t = go.transform;
-            var updated = new JArray();
+            var updated = new JsonArray();
 
             if (HasKey(args, "position"))
             {
-                t.position = ParseVec3(args["position"] as JObject);
+                t.position = ParseVec3(args["position"] as JsonObject);
                 updated.Add("position");
             }
             if (HasKey(args, "localPosition"))
             {
-                t.localPosition = ParseVec3(args["localPosition"] as JObject);
+                t.localPosition = ParseVec3(args["localPosition"] as JsonObject);
                 updated.Add("localPosition");
             }
             if (HasKey(args, "rotation"))
             {
-                t.localEulerAngles = ParseVec3(args["rotation"] as JObject);
+                t.localEulerAngles = ParseVec3(args["rotation"] as JsonObject);
                 updated.Add("rotation");
             }
             if (HasKey(args, "localScale"))
             {
-                t.localScale = ParseVec3(args["localScale"] as JObject);
+                t.localScale = ParseVec3(args["localScale"] as JsonObject);
                 updated.Add("localScale");
             }
 
             return McpProtocol.ToolSuccess(
-                new JObject
+                new JsonObject
                 {
                     ["success"] = true,
                     ["objectHandle"] = handle,
@@ -271,7 +271,7 @@ namespace UnityExplorerMCP.Tools
             return null;
         }
 
-        static JObject Vec3(Vector3 v) =>
+        static JsonObject Vec3(Vector3 v) =>
             new()
             {
                 ["x"] = v.x,
@@ -279,14 +279,14 @@ namespace UnityExplorerMCP.Tools
                 ["z"] = v.z,
             };
 
-        static Vector3 ParseVec3(JObject obj)
+        static Vector3 ParseVec3(JsonObject obj)
         {
             if (obj == null)
                 return Vector3.zero;
             return new Vector3(
-                obj["x"]?.Value<float>() ?? 0,
-                obj["y"]?.Value<float>() ?? 0,
-                obj["z"]?.Value<float>() ?? 0
+                obj["x"]?.GetValue<float>() ?? 0,
+                obj["y"]?.GetValue<float>() ?? 0,
+                obj["z"]?.GetValue<float>() ?? 0
             );
         }
 

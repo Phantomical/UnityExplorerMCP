@@ -3,9 +3,10 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Threading;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityExplorerMCP.Tools;
 
@@ -26,10 +27,9 @@ namespace UnityExplorerMCP.Server
         HttpListenerResponse _sseResponse;
         StreamWriter _sseWriter;
 
-        static readonly JsonSerializerSettings SerializerSettings = new()
+        static readonly JsonSerializerOptions SerializerOptions = new()
         {
-            NullValueHandling = NullValueHandling.Ignore,
-            Formatting = Formatting.None,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         };
 
         public McpSession(string id, ToolRegistry tools)
@@ -103,7 +103,10 @@ namespace UnityExplorerMCP.Server
             McpProtocol.JsonRpcRequest request;
             try
             {
-                request = JsonConvert.DeserializeObject<McpProtocol.JsonRpcRequest>(body);
+                request = JsonSerializer.Deserialize<McpProtocol.JsonRpcRequest>(
+                    body,
+                    SerializerOptions
+                );
             }
             catch (Exception ex)
             {
@@ -131,7 +134,7 @@ namespace UnityExplorerMCP.Server
                     // Client acknowledgment — no response needed
                     break;
                 case "ping":
-                    SendResponse(McpProtocol.Success(request.Id, new JObject()));
+                    SendResponse(McpProtocol.Success(request.Id, new JsonObject()));
                     break;
                 case "tools/list":
                     HandleToolsList(request);
@@ -164,7 +167,9 @@ namespace UnityExplorerMCP.Server
 
         void HandleToolCall(McpProtocol.JsonRpcRequest request)
         {
-            var callParams = request.Params?.ToObject<McpProtocol.ToolCallParams>();
+            var callParams = request.Params?.Deserialize<McpProtocol.ToolCallParams>(
+                SerializerOptions
+            );
             if (callParams == null || string.IsNullOrEmpty(callParams.Name))
             {
                 SendResponse(
@@ -190,11 +195,11 @@ namespace UnityExplorerMCP.Server
             {
                 var toolResult = _tools.Invoke(
                     callParams.Name,
-                    callParams.Arguments ?? new JObject()
+                    callParams.Arguments ?? new JsonObject()
                 );
-                return JsonConvert.SerializeObject(
+                return JsonSerializer.Serialize(
                     McpProtocol.Success(request.Id, toolResult),
-                    SerializerSettings
+                    SerializerOptions
                 );
             });
 
@@ -204,7 +209,7 @@ namespace UnityExplorerMCP.Server
 
         void SendResponse(McpProtocol.JsonRpcResponse response)
         {
-            string json = JsonConvert.SerializeObject(response, SerializerSettings);
+            string json = JsonSerializer.Serialize(response, SerializerOptions);
             EnqueueRaw(json);
         }
 

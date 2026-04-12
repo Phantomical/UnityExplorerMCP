@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Text;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using UnityExplorerMCP.Server;
 
 namespace UnityExplorerMCP.Tools
@@ -36,9 +36,9 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult EvaluateCSharp(JObject args)
+        McpProtocol.ToolCallResult EvaluateCSharp(JsonObject args)
         {
-            string code = args?["code"]?.Value<string>();
+            string code = args?["code"]?.GetValue<string>();
             if (string.IsNullOrEmpty(code))
                 return McpProtocol.ToolError("Code is required");
 
@@ -48,11 +48,11 @@ namespace UnityExplorerMCP.Tools
                 );
 
             // Add usings if requested
-            if (args?["addUsings"] is JArray usings)
+            if (args?["addUsings"] is JsonArray usings)
             {
                 foreach (var u in usings)
                 {
-                    string usingCode = $"using {u.Value<string>()};";
+                    string usingCode = $"using {u.GetValue<string>()};";
                     try
                     {
                         InvokeRun(usingCode);
@@ -68,7 +68,11 @@ namespace UnityExplorerMCP.Tools
                 // First try Evaluate (for expressions that return a value)
                 object result = InvokeEvaluate(code);
 
-                var response = new JObject { ["success"] = true, ["output"] = _output.ToString() };
+                var response = new JsonObject
+                {
+                    ["success"] = true,
+                    ["output"] = _output.ToString(),
+                };
 
                 if (result != null)
                 {
@@ -87,7 +91,7 @@ namespace UnityExplorerMCP.Tools
                     bool success = InvokeRun(code);
 
                     return McpProtocol.ToolSuccess(
-                        new JObject
+                        new JsonObject
                         {
                             ["success"] = success,
                             ["output"] = _output.ToString(),
@@ -98,7 +102,7 @@ namespace UnityExplorerMCP.Tools
                 catch (Exception ex2)
                 {
                     return McpProtocol.ToolSuccess(
-                        new JObject
+                        new JsonObject
                         {
                             ["success"] = false,
                             ["error"] = ex2.InnerException?.Message ?? ex2.Message,

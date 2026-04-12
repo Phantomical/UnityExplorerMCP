@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using UnityEngine;
 using UnityExplorerMCP.Server;
 
@@ -73,11 +73,11 @@ namespace UnityExplorerMCP.Tools
             }
         }
 
-        McpProtocol.ToolCallResult GetLogs(JObject args)
+        McpProtocol.ToolCallResult GetLogs(JsonObject args)
         {
             int count = Math.Min(GetInt(args, "count", 50), 500);
             string logTypeFilter = GetString(args, "logType");
-            float sinceTimestamp = args?["sinceTimestamp"]?.Value<float>() ?? 0;
+            float sinceTimestamp = args?["sinceTimestamp"]?.GetValue<float>() ?? 0;
 
             LogType? typeFilter = null;
             if (!string.IsNullOrEmpty(logTypeFilter))
@@ -105,11 +105,11 @@ namespace UnityExplorerMCP.Tools
             int totalFiltered = entries.Count;
             var recent = entries.Skip(Math.Max(0, entries.Count - count)).Take(count).ToList();
 
-            var logs = new JArray();
+            var logs = new JsonArray();
             foreach (var entry in recent)
             {
                 logs.Add(
-                    new JObject
+                    new JsonObject
                     {
                         ["message"] = entry.Message,
                         ["stackTrace"] = entry.StackTrace,
@@ -128,7 +128,7 @@ namespace UnityExplorerMCP.Tools
             }
 
             return McpProtocol.ToolSuccess(
-                new JObject
+                new JsonObject
                 {
                     ["logs"] = logs,
                     ["totalBuffered"] = _logBuffer.Count,
@@ -137,18 +137,16 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        static int GetInt(JObject args, string key, int defaultValue = 0)
+        static int GetInt(JsonObject args, string key, int defaultValue = 0)
         {
-            var token = args?[key];
-            return token != null ? token.Value<int>() : defaultValue;
+            var node = args?[key];
+            return node != null ? node.GetValue<int>() : defaultValue;
         }
 
-        static string GetString(JObject args, string key, string defaultValue = null)
+        static string GetString(JsonObject args, string key, string defaultValue = null)
         {
-            var token = args?[key];
-            return token != null && token.Type != JTokenType.Null
-                ? token.Value<string>()
-                : defaultValue;
+            var node = args?[key];
+            return node != null ? node.GetValue<string>() : defaultValue;
         }
     }
 }

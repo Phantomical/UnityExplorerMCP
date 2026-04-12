@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using UnityExplorerMCP.Serialization;
 using UnityExplorerMCP.Server;
 
@@ -95,7 +95,7 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult GetMembers(JObject args)
+        McpProtocol.ToolCallResult GetMembers(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
             string typeName = GetString(args, "typeName");
@@ -105,9 +105,9 @@ namespace UnityExplorerMCP.Tools
             int offset = GetInt(args, "offset", 0);
 
             var memberTypeFilter = new HashSet<string>();
-            if (args?["memberTypes"] is JArray mtArr)
+            if (args?["memberTypes"] is JsonArray mtArr)
                 foreach (var t in mtArr)
-                    memberTypeFilter.Add(t.Value<string>().ToLowerInvariant());
+                    memberTypeFilter.Add(t.GetValue<string>().ToLowerInvariant());
 
             object instance = null;
             Type type;
@@ -131,7 +131,7 @@ namespace UnityExplorerMCP.Tools
             }
 
             bool isStaticOnly = instance == null;
-            var allMembers = new List<JObject>();
+            var allMembers = new List<JsonObject>();
 
             // Fields
             if (memberTypeFilter.Count == 0 || memberTypeFilter.Contains("field"))
@@ -143,7 +143,7 @@ namespace UnityExplorerMCP.Tools
                     if (!MatchesNameFilter(field.Name, nameFilter))
                         continue;
 
-                    var member = new JObject
+                    var member = new JsonObject
                     {
                         ["name"] = field.Name,
                         ["memberType"] = "field",
@@ -172,7 +172,7 @@ namespace UnityExplorerMCP.Tools
                         continue;
 
                     var indexParams = prop.GetIndexParameters();
-                    var member = new JObject
+                    var member = new JsonObject
                     {
                         ["name"] = prop.Name,
                         ["memberType"] = "property",
@@ -206,7 +206,7 @@ namespace UnityExplorerMCP.Tools
                     if (method.IsSpecialName)
                         continue;
 
-                    var member = new JObject
+                    var member = new JsonObject
                     {
                         ["name"] = method.Name,
                         ["memberType"] = "method",
@@ -225,7 +225,9 @@ namespace UnityExplorerMCP.Tools
                     if (method.IsGenericMethodDefinition)
                     {
                         var genArgs = method.GetGenericArguments();
-                        member["genericArguments"] = new JArray(genArgs.Select(a => a.Name));
+                        member["genericArguments"] = new JsonArray(
+                            genArgs.Select(a => (JsonNode)a.Name).ToArray()
+                        );
                     }
 
                     allMembers.Add(member);
@@ -240,7 +242,7 @@ namespace UnityExplorerMCP.Tools
                     if (!MatchesScope(ctor.IsStatic, scope, isStaticOnly))
                         continue;
 
-                    var member = new JObject
+                    var member = new JsonObject
                     {
                         ["name"] = ".ctor",
                         ["memberType"] = "constructor",
@@ -264,7 +266,7 @@ namespace UnityExplorerMCP.Tools
             var paged = allMembers.Skip(offset).Take(limit).ToList();
 
             return McpProtocol.ToolSuccess(
-                new JObject
+                new JsonObject
                 {
                     ["targetHandle"] = handle,
                     ["typeName"] = type.Name,
@@ -272,12 +274,12 @@ namespace UnityExplorerMCP.Tools
                     ["assemblyName"] = type.Assembly.GetName().Name,
                     ["isStaticInspection"] = isStaticOnly,
                     ["totalCount"] = totalCount,
-                    ["members"] = new JArray(paged),
+                    ["members"] = new JsonArray(paged.ToArray()),
                 }
             );
         }
 
-        McpProtocol.ToolCallResult GetValue(JObject args)
+        McpProtocol.ToolCallResult GetValue(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
             string typeName = GetString(args, "typeName");
@@ -303,13 +305,13 @@ namespace UnityExplorerMCP.Tools
                     return McpProtocol.ToolError($"Property '{memberName}' is write-only.");
 
                 object[] indexArgs = null;
-                if (args?["indexArguments"] is JArray idxArr && idxArr.Count > 0)
+                if (args?["indexArguments"] is JsonArray idxArr && idxArr.Count > 0)
                 {
                     var indexParams = prop.GetIndexParameters();
                     indexArgs = new object[idxArr.Count];
                     for (int i = 0; i < idxArr.Count; i++)
                         indexArgs[i] = _deserializer.Deserialize(
-                            idxArr[i].Value<string>(),
+                            idxArr[i].GetValue<string>(),
                             indexParams[i].ParameterType
                         );
                 }
@@ -323,7 +325,7 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult SetValue(JObject args)
+        McpProtocol.ToolCallResult SetValue(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
             string typeName = GetString(args, "typeName");
@@ -345,7 +347,7 @@ namespace UnityExplorerMCP.Tools
                 field.SetValue(instance, parsed);
 
                 return McpProtocol.ToolSuccess(
-                    new JObject
+                    new JsonObject
                     {
                         ["success"] = true,
                         ["memberName"] = memberName,
@@ -365,7 +367,7 @@ namespace UnityExplorerMCP.Tools
                 prop.SetValue(instance, parsed);
 
                 return McpProtocol.ToolSuccess(
-                    new JObject
+                    new JsonObject
                     {
                         ["success"] = true,
                         ["memberName"] = memberName,
@@ -379,7 +381,7 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult InvokeMethod(JObject args)
+        McpProtocol.ToolCallResult InvokeMethod(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
             string typeName = GetString(args, "typeName");
@@ -391,12 +393,12 @@ namespace UnityExplorerMCP.Tools
 
             // Parse generic type arguments if present
             Type[] genericArgs = null;
-            if (args?["genericTypeArguments"] is JArray genArr && genArr.Count > 0)
+            if (args?["genericTypeArguments"] is JsonArray genArr && genArr.Count > 0)
             {
                 genericArgs = new Type[genArr.Count];
                 for (int i = 0; i < genArr.Count; i++)
                 {
-                    genericArgs[i] = TypeResolver.FindType(genArr[i].Value<string>());
+                    genericArgs[i] = TypeResolver.FindType(genArr[i].GetValue<string>());
                     if (genericArgs[i] == null)
                         return McpProtocol.ToolError(
                             $"Generic type argument not found: {genArr[i]}"
@@ -406,9 +408,9 @@ namespace UnityExplorerMCP.Tools
 
             // Find matching method
             var argStrings = new List<string>();
-            if (args?["arguments"] is JArray argArr)
+            if (args?["arguments"] is JsonArray argArr)
                 foreach (var a in argArr)
-                    argStrings.Add(a.Value<string>());
+                    argStrings.Add(a.GetValue<string>());
 
             MethodInfo method = FindMethod(type, methodName, argStrings.Count, genericArgs);
             if (method == null)
@@ -451,7 +453,7 @@ namespace UnityExplorerMCP.Tools
 
             bool isVoid = method.ReturnType == typeof(void);
 
-            var response = new JObject
+            var response = new JsonObject
             {
                 ["success"] = true,
                 ["methodName"] = methodName,
@@ -469,15 +471,15 @@ namespace UnityExplorerMCP.Tools
             return McpProtocol.ToolSuccess(response);
         }
 
-        McpProtocol.ToolCallResult GetTypeInfo(JObject args)
+        McpProtocol.ToolCallResult GetTypeInfo(JsonObject args)
         {
             string typeName = GetString(args, "typeName");
             Type type = TypeResolver.FindType(typeName);
 
             if (type == null)
-                return McpProtocol.ToolSuccess(new JObject { ["found"] = false });
+                return McpProtocol.ToolSuccess(new JsonObject { ["found"] = false });
 
-            var result = new JObject
+            var result = new JsonObject
             {
                 ["found"] = true,
                 ["typeName"] = type.Name,
@@ -492,25 +494,27 @@ namespace UnityExplorerMCP.Tools
                 ["isValueType"] = type.IsValueType,
                 ["isGenericType"] = type.IsGenericType,
                 ["isInterface"] = type.IsInterface,
-                ["interfaces"] = new JArray(type.GetInterfaces().Select(i => i.FullName)),
+                ["interfaces"] = new JsonArray(
+                    type.GetInterfaces().Select(i => (JsonNode)i.FullName).ToArray()
+                ),
             };
 
             if (type.IsGenericType)
-                result["genericArguments"] = new JArray(
-                    type.GetGenericArguments().Select(a => a.Name)
+                result["genericArguments"] = new JsonArray(
+                    type.GetGenericArguments().Select(a => (JsonNode)a.Name).ToArray()
                 );
 
             if (type.IsEnum)
             {
-                var enumValues = new JObject();
+                var enumValues = new JsonObject();
                 foreach (var name in Enum.GetNames(type))
-                    enumValues[name] = JToken.FromObject(
+                    enumValues[name] = ValueSerializer.BoxedToNode(
                         Convert.ChangeType(Enum.Parse(type, name), Enum.GetUnderlyingType(type))
                     );
                 result["enumValues"] = enumValues;
             }
 
-            result["memberCounts"] = new JObject
+            result["memberCounts"] = new JsonObject
             {
                 ["fields"] = type.GetFields(AllFlags).Length,
                 ["properties"] = type.GetProperties(AllFlags).Length,
@@ -551,7 +555,7 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        void TryAutoEvaluateField(FieldInfo field, object instance, JObject member)
+        void TryAutoEvaluateField(FieldInfo field, object instance, JsonObject member)
         {
             if (instance == null && !field.IsStatic)
                 return;
@@ -570,7 +574,7 @@ namespace UnityExplorerMCP.Tools
             }
         }
 
-        void TryAutoEvaluateProperty(PropertyInfo prop, object instance, JObject member)
+        void TryAutoEvaluateProperty(PropertyInfo prop, object instance, JsonObject member)
         {
             if (instance == null && !(prop.GetMethod?.IsStatic ?? false))
                 return;
@@ -597,7 +601,7 @@ namespace UnityExplorerMCP.Tools
             Type declaredType
         )
         {
-            var result = new JObject
+            var result = new JsonObject
             {
                 ["memberName"] = memberName,
                 ["value"] = _serializer.Serialize(value, declaredType),
@@ -658,20 +662,20 @@ namespace UnityExplorerMCP.Tools
             return name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        static JArray FormatParameters(ParameterInfo[] parameters)
+        static JsonArray FormatParameters(ParameterInfo[] parameters)
         {
-            var arr = new JArray();
+            var arr = new JsonArray();
             foreach (var p in parameters)
             {
                 arr.Add(
-                    new JObject
+                    new JsonObject
                     {
                         ["name"] = p.Name,
                         ["typeName"] = p.ParameterType.Name,
                         ["isOptional"] = p.IsOptional,
                         ["defaultValue"] =
                             p.HasDefaultValue && p.DefaultValue != null
-                                ? JToken.FromObject(p.DefaultValue)
+                                ? ValueSerializer.BoxedToNode(p.DefaultValue)
                                 : null,
                     }
                 );

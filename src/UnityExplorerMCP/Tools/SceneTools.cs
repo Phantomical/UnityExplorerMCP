@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityExplorerMCP.Server;
@@ -68,9 +68,9 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult ListScenes(JObject args)
+        McpProtocol.ToolCallResult ListScenes(JsonObject args)
         {
-            var scenes = new JArray();
+            var scenes = new JsonArray();
 
             for (int i = 0; i < SceneManager.sceneCount; i++)
             {
@@ -79,7 +79,7 @@ namespace UnityExplorerMCP.Tools
                     continue;
 
                 scenes.Add(
-                    new JObject
+                    new JsonObject
                     {
                         ["name"] = scene.name,
                         ["buildIndex"] = scene.buildIndex,
@@ -96,7 +96,7 @@ namespace UnityExplorerMCP.Tools
             if (DontDestroyOnLoadExists())
             {
                 scenes.Add(
-                    new JObject
+                    new JsonObject
                     {
                         ["name"] = "DontDestroyOnLoad",
                         ["buildIndex"] = -1,
@@ -112,7 +112,7 @@ namespace UnityExplorerMCP.Tools
 
             // HideAndDontSave (handle -1)
             scenes.Add(
-                new JObject
+                new JsonObject
                 {
                     ["name"] = "HideAndDontSave",
                     ["buildIndex"] = -1,
@@ -125,10 +125,10 @@ namespace UnityExplorerMCP.Tools
                 }
             );
 
-            return McpProtocol.ToolSuccess(new JObject { ["scenes"] = scenes });
+            return McpProtocol.ToolSuccess(new JsonObject { ["scenes"] = scenes });
         }
 
-        McpProtocol.ToolCallResult GetRootObjects(JObject args)
+        McpProtocol.ToolCallResult GetRootObjects(JsonObject args)
         {
             int sceneHandle = GetInt(args, "sceneHandle");
             int limit = GetInt(args, "limit", 50);
@@ -137,7 +137,7 @@ namespace UnityExplorerMCP.Tools
             GameObject[] roots = GetRootObjectsForScene(sceneHandle);
             string sceneName = GetSceneName(sceneHandle);
 
-            var objects = new JArray();
+            var objects = new JsonArray();
             for (int i = offset; i < roots.Length && i < offset + limit; i++)
             {
                 var go = roots[i];
@@ -147,7 +147,7 @@ namespace UnityExplorerMCP.Tools
             }
 
             return McpProtocol.ToolSuccess(
-                new JObject
+                new JsonObject
                 {
                     ["sceneHandle"] = sceneHandle,
                     ["sceneName"] = sceneName,
@@ -157,7 +157,7 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult GetChildren(JObject args)
+        McpProtocol.ToolCallResult GetChildren(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
             int limit = GetInt(args, "limit", 50);
@@ -176,7 +176,7 @@ namespace UnityExplorerMCP.Tools
 
             var transform = go.transform;
             int totalCount = transform.childCount;
-            var children = new JArray();
+            var children = new JsonArray();
 
             for (int i = offset; i < totalCount && i < offset + limit; i++)
             {
@@ -185,7 +185,7 @@ namespace UnityExplorerMCP.Tools
                     continue;
                 var childGo = child.gameObject;
                 children.Add(
-                    new JObject
+                    new JsonObject
                     {
                         ["objectHandle"] = Registry.Register(childGo),
                         ["instanceId"] = childGo.GetInstanceID(),
@@ -199,7 +199,7 @@ namespace UnityExplorerMCP.Tools
             }
 
             return McpProtocol.ToolSuccess(
-                new JObject
+                new JsonObject
                 {
                     ["parentHandle"] = handle,
                     ["parentName"] = go.name,
@@ -209,7 +209,7 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult FindByPath(JObject args)
+        McpProtocol.ToolCallResult FindByPath(JsonObject args)
         {
             string path = GetString(args, "path");
             int? sceneHandle = HasKey(args, "sceneHandle")
@@ -263,7 +263,7 @@ namespace UnityExplorerMCP.Tools
                     if (found)
                     {
                         return McpProtocol.ToolSuccess(
-                            new JObject
+                            new JsonObject
                             {
                                 ["found"] = true,
                                 ["objectHandle"] = Registry.Register(current),
@@ -280,7 +280,7 @@ namespace UnityExplorerMCP.Tools
             }
 
             return McpProtocol.ToolSuccess(
-                new JObject
+                new JsonObject
                 {
                     ["found"] = false,
                     ["objectHandle"] = null,
@@ -292,20 +292,20 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult GetHierarchyPath(JObject args)
+        McpProtocol.ToolCallResult GetHierarchyPath(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
             var go = Registry.Resolve<GameObject>(handle);
             if (go == null)
                 return HandleNotFound(handle);
 
-            var ancestors = new JArray();
+            var ancestors = new JsonArray();
             Transform t = go.transform.parent;
             while (t != null)
             {
                 ancestors.Insert(
                     0,
-                    new JObject
+                    new JsonObject
                     {
                         ["objectHandle"] = Registry.Register(t.gameObject),
                         ["name"] = t.name,
@@ -323,7 +323,7 @@ namespace UnityExplorerMCP.Tools
             }
 
             return McpProtocol.ToolSuccess(
-                new JObject
+                new JsonObject
                 {
                     ["objectHandle"] = handle,
                     ["path"] = GetFullPath(go.transform),
@@ -336,9 +336,9 @@ namespace UnityExplorerMCP.Tools
 
         #region Helpers
 
-        JObject GameObjectSummary(GameObject go)
+        JsonObject GameObjectSummary(GameObject go)
         {
-            return new JObject
+            return new JsonObject
             {
                 ["objectHandle"] = Registry.Register(go),
                 ["instanceId"] = go.GetInstanceID(),

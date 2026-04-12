@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using UnityExplorerMCP.Server;
 
 namespace UnityExplorerMCP.Tools
@@ -46,7 +45,7 @@ namespace UnityExplorerMCP.Tools
         }
     }
 
-    public delegate McpProtocol.ToolCallResult ToolHandler(JObject arguments);
+    public delegate McpProtocol.ToolCallResult ToolHandler(JsonObject arguments);
 
     /// <summary>
     /// Registry that maps tool names to their handlers and schema definitions.
@@ -59,7 +58,7 @@ namespace UnityExplorerMCP.Tools
         public void Register(
             string name,
             string description,
-            JObject inputSchema,
+            JsonObject inputSchema,
             ToolHandler handler
         )
         {
@@ -80,18 +79,23 @@ namespace UnityExplorerMCP.Tools
             ToolHandler handler
         )
         {
-            var schema = new JObject
+            var schema = new JsonObject
             {
                 ["type"] = "object",
-                ["properties"] = JObject.Parse(propertiesJson),
+                ["properties"] = JsonNode.Parse(propertiesJson).AsObject(),
             };
             if (required != null && required.Length > 0)
-                schema["required"] = new JArray(required);
+            {
+                var reqArr = new JsonArray();
+                foreach (var r in required)
+                    reqArr.Add((JsonNode)r);
+                schema["required"] = reqArr;
+            }
 
             Register(name, description, schema, handler);
         }
 
-        public McpProtocol.ToolCallResult Invoke(string name, JObject arguments)
+        public McpProtocol.ToolCallResult Invoke(string name, JsonObject arguments)
         {
             if (!_handlers.TryGetValue(name, out var handler))
                 return McpProtocol.ToolError($"Unknown tool: {name}");

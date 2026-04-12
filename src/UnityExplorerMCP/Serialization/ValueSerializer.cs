@@ -1,7 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using UnityEngine;
 using UnityExplorerMCP.ObjectRegistry;
 
@@ -23,49 +23,49 @@ namespace UnityExplorerMCP.Serialization
         }
 
         /// <summary>
-        /// Serialize a value to a JToken suitable for JSON responses.
+        /// Serialize a value to a JsonNode suitable for JSON responses.
         /// Returns the serialized value and optionally an object handle.
         /// </summary>
-        public JToken Serialize(object value, Type declaredType = null, int depth = 0)
+        public JsonNode Serialize(object value, Type declaredType = null, int depth = 0)
         {
             if (value == null)
-                return JValue.CreateNull();
+                return null;
 
             var type = value.GetType();
             declaredType ??= type;
 
             // Primitives
             if (value is bool b)
-                return new JValue(b);
+                return (JsonNode)b;
             if (value is string s)
-                return new JValue(
+                return (JsonNode)(
                     s.Length > MaxStringLength ? s.Substring(0, MaxStringLength) + "..." : s
                 );
             if (IsNumeric(type))
-                return JToken.FromObject(value);
+                return BoxedToNode(value);
 
             // Enums
             if (type.IsEnum)
-                return new JObject
+                return new JsonObject
                 {
                     ["enumValue"] = value.ToString(),
-                    ["numericValue"] = JToken.FromObject(
+                    ["numericValue"] = BoxedToNode(
                         Convert.ChangeType(value, Enum.GetUnderlyingType(type))
                     ),
                 };
 
             // Unity types
             if (value is Vector2 v2)
-                return new JObject { ["x"] = v2.x, ["y"] = v2.y };
+                return new JsonObject { ["x"] = v2.x, ["y"] = v2.y };
             if (value is Vector3 v3)
-                return new JObject
+                return new JsonObject
                 {
                     ["x"] = v3.x,
                     ["y"] = v3.y,
                     ["z"] = v3.z,
                 };
             if (value is Vector4 v4)
-                return new JObject
+                return new JsonObject
                 {
                     ["x"] = v4.x,
                     ["y"] = v4.y,
@@ -73,7 +73,7 @@ namespace UnityExplorerMCP.Serialization
                     ["w"] = v4.w,
                 };
             if (value is Quaternion q)
-                return new JObject
+                return new JsonObject
                 {
                     ["x"] = q.x,
                     ["y"] = q.y,
@@ -81,7 +81,7 @@ namespace UnityExplorerMCP.Serialization
                     ["w"] = q.w,
                 };
             if (value is Color c)
-                return new JObject
+                return new JsonObject
                 {
                     ["r"] = c.r,
                     ["g"] = c.g,
@@ -89,15 +89,15 @@ namespace UnityExplorerMCP.Serialization
                     ["a"] = c.a,
                 };
             if (value is Color32 c32)
-                return new JObject
+                return new JsonObject
                 {
-                    ["r"] = c32.r,
-                    ["g"] = c32.g,
-                    ["b"] = c32.b,
-                    ["a"] = c32.a,
+                    ["r"] = (int)c32.r,
+                    ["g"] = (int)c32.g,
+                    ["b"] = (int)c32.b,
+                    ["a"] = (int)c32.a,
                 };
             if (value is Rect rect)
-                return new JObject
+                return new JsonObject
                 {
                     ["x"] = rect.x,
                     ["y"] = rect.y,
@@ -105,7 +105,7 @@ namespace UnityExplorerMCP.Serialization
                     ["height"] = rect.height,
                 };
             if (value is Bounds bounds)
-                return new JObject
+                return new JsonObject
                 {
                     ["center"] = Serialize(bounds.center, null, depth + 1),
                     ["size"] = Serialize(bounds.size, null, depth + 1),
@@ -113,7 +113,7 @@ namespace UnityExplorerMCP.Serialization
 
             // Type references
             if (value is Type typeRef)
-                return new JObject
+                return new JsonObject
                 {
                     ["typeName"] = typeRef.Name,
                     ["typeFullName"] = typeRef.FullName,
@@ -140,14 +140,14 @@ namespace UnityExplorerMCP.Serialization
             return ObjectSummary(value);
         }
 
-        JToken SerializeList(IList list, int depth)
+        JsonNode SerializeList(IList list, int depth)
         {
-            var items = new JArray();
+            var items = new JsonArray();
             int count = Math.Min(list.Count, MaxCollectionItems);
             for (int i = 0; i < count; i++)
                 items.Add(Serialize(list[i], null, depth + 1));
 
-            return new JObject
+            return new JsonObject
             {
                 ["count"] = list.Count,
                 ["items"] = items,
@@ -155,16 +155,16 @@ namespace UnityExplorerMCP.Serialization
             };
         }
 
-        JToken SerializeDictionary(IDictionary dict, int depth)
+        JsonNode SerializeDictionary(IDictionary dict, int depth)
         {
-            var entries = new JArray();
+            var entries = new JsonArray();
             int i = 0;
             foreach (DictionaryEntry entry in dict)
             {
                 if (i++ >= MaxCollectionItems)
                     break;
                 entries.Add(
-                    new JObject
+                    new JsonObject
                     {
                         ["key"] = Serialize(entry.Key, null, depth + 1),
                         ["value"] = Serialize(entry.Value, null, depth + 1),
@@ -172,7 +172,7 @@ namespace UnityExplorerMCP.Serialization
                 );
             }
 
-            return new JObject
+            return new JsonObject
             {
                 ["count"] = dict.Count,
                 ["entries"] = entries,
@@ -180,9 +180,9 @@ namespace UnityExplorerMCP.Serialization
             };
         }
 
-        JToken SerializeEnumerable(IEnumerable enumerable, int depth)
+        JsonNode SerializeEnumerable(IEnumerable enumerable, int depth)
         {
-            var items = new JArray();
+            var items = new JsonArray();
             int count = 0;
             foreach (var item in enumerable)
             {
@@ -191,15 +191,15 @@ namespace UnityExplorerMCP.Serialization
                 items.Add(Serialize(item, null, depth + 1));
             }
 
-            return new JObject { ["items"] = items, ["truncated"] = count > MaxCollectionItems };
+            return new JsonObject { ["items"] = items, ["truncated"] = count > MaxCollectionItems };
         }
 
-        JToken ObjectSummary(object value)
+        JsonNode ObjectSummary(object value)
         {
             if (value == null)
-                return JValue.CreateNull();
+                return null;
 
-            var result = new JObject
+            var result = new JsonObject
             {
                 ["type"] = value.GetType().Name,
                 ["typeFullName"] = value.GetType().FullName,
@@ -257,6 +257,32 @@ namespace UnityExplorerMCP.Serialization
             {
                 return $"<{value.GetType().Name}>";
             }
+        }
+
+        /// <summary>
+        /// Convert a boxed primitive value to a JsonNode.
+        /// </summary>
+        internal static JsonNode BoxedToNode(object value)
+        {
+            if (value == null)
+                return null;
+            return value switch
+            {
+                bool b => (JsonNode)b,
+                byte v => (JsonNode)v,
+                sbyte v => (JsonNode)v,
+                short v => (JsonNode)v,
+                ushort v => (JsonNode)v,
+                int v => (JsonNode)v,
+                uint v => (JsonNode)v,
+                long v => (JsonNode)v,
+                ulong v => (JsonNode)v,
+                float v => (JsonNode)v,
+                double v => (JsonNode)v,
+                decimal v => (JsonNode)v,
+                string s => (JsonNode)s,
+                _ => (JsonNode)value.ToString(),
+            };
         }
 
         static bool IsNumeric(Type type)

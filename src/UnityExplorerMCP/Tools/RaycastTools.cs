@@ -1,4 +1,4 @@
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using UnityEngine;
 using UnityExplorerMCP.Server;
 
@@ -27,10 +27,10 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult Raycast(JObject args)
+        McpProtocol.ToolCallResult Raycast(JsonObject args)
         {
             string mode = GetString(args, "mode");
-            float maxDistance = args?["maxDistance"]?.Value<float>() ?? 1000f;
+            float maxDistance = args?["maxDistance"]?.GetValue<float>() ?? 1000f;
             int layerMask = GetInt(args, "layerMask", -1); // -1 = all layers
 
             Ray ray;
@@ -41,32 +41,32 @@ namespace UnityExplorerMCP.Tools
                 if (cam == null)
                     return McpProtocol.ToolError("No main camera found.");
 
-                var screenPos = args?["screenPosition"] as JObject;
+                var screenPos = args?["screenPosition"] as JsonObject;
                 if (screenPos == null)
                     return McpProtocol.ToolError("screenPosition is required for screen mode.");
 
-                float x = screenPos["x"]?.Value<float>() ?? 0;
-                float y = screenPos["y"]?.Value<float>() ?? 0;
+                float x = screenPos["x"]?.GetValue<float>() ?? 0;
+                float y = screenPos["y"]?.GetValue<float>() ?? 0;
                 ray = cam.ScreenPointToRay(new Vector3(x, y, 0));
             }
             else if (mode == "world")
             {
-                var originObj = args?["origin"] as JObject;
-                var dirObj = args?["direction"] as JObject;
+                var originObj = args?["origin"] as JsonObject;
+                var dirObj = args?["direction"] as JsonObject;
                 if (originObj == null || dirObj == null)
                     return McpProtocol.ToolError(
                         "origin and direction are required for world mode."
                     );
 
                 var origin = new Vector3(
-                    originObj["x"]?.Value<float>() ?? 0,
-                    originObj["y"]?.Value<float>() ?? 0,
-                    originObj["z"]?.Value<float>() ?? 0
+                    originObj["x"]?.GetValue<float>() ?? 0,
+                    originObj["y"]?.GetValue<float>() ?? 0,
+                    originObj["z"]?.GetValue<float>() ?? 0
                 );
                 var direction = new Vector3(
-                    dirObj["x"]?.Value<float>() ?? 0,
-                    dirObj["y"]?.Value<float>() ?? 0,
-                    dirObj["z"]?.Value<float>() ?? 0
+                    dirObj["x"]?.GetValue<float>() ?? 0,
+                    dirObj["y"]?.GetValue<float>() ?? 0,
+                    dirObj["z"]?.GetValue<float>() ?? 0
                 );
                 ray = new Ray(origin, direction);
             }
@@ -79,10 +79,10 @@ namespace UnityExplorerMCP.Tools
             {
                 var go = hit.collider.gameObject;
                 return McpProtocol.ToolSuccess(
-                    new JObject
+                    new JsonObject
                     {
                         ["hit"] = true,
-                        ["hitInfo"] = new JObject
+                        ["hitInfo"] = new JsonObject
                         {
                             ["objectHandle"] = Registry.Register(go),
                             ["gameObjectName"] = go.name,
@@ -96,10 +96,10 @@ namespace UnityExplorerMCP.Tools
                 );
             }
 
-            return McpProtocol.ToolSuccess(new JObject { ["hit"] = false, ["hitInfo"] = null });
+            return McpProtocol.ToolSuccess(new JsonObject { ["hit"] = false, ["hitInfo"] = null });
         }
 
-        static JObject Vec3(Vector3 v) =>
+        static JsonObject Vec3(Vector3 v) =>
             new()
             {
                 ["x"] = v.x,

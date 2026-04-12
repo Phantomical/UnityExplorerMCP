@@ -1,5 +1,5 @@
 using System;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using UnityEngine;
 using UnityExplorerMCP.Serialization;
 using UnityExplorerMCP.Server;
@@ -56,14 +56,14 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult ListComponents(JObject args)
+        McpProtocol.ToolCallResult ListComponents(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
             var go = ResolveGameObject(handle);
             if (go == null)
                 return HandleNotFound(handle);
 
-            var components = new JArray();
+            var components = new JsonArray();
             foreach (var comp in go.GetComponents<Component>())
             {
                 if (comp == null)
@@ -72,7 +72,7 @@ namespace UnityExplorerMCP.Tools
                 bool isBehaviour = comp is Behaviour;
 
                 components.Add(
-                    new JObject
+                    new JsonObject
                     {
                         ["objectHandle"] = Registry.Register(comp),
                         ["instanceId"] = comp.GetInstanceID(),
@@ -87,7 +87,7 @@ namespace UnityExplorerMCP.Tools
             }
 
             return McpProtocol.ToolSuccess(
-                new JObject
+                new JsonObject
                 {
                     ["gameObjectHandle"] = handle,
                     ["gameObjectName"] = go.name,
@@ -96,7 +96,7 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult ToggleComponent(JObject args)
+        McpProtocol.ToolCallResult ToggleComponent(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
             bool enabled = GetBool(args, "enabled");
@@ -109,7 +109,7 @@ namespace UnityExplorerMCP.Tools
             {
                 behaviour.enabled = enabled;
                 return McpProtocol.ToolSuccess(
-                    new JObject
+                    new JsonObject
                     {
                         ["success"] = true,
                         ["objectHandle"] = handle,
@@ -124,7 +124,7 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult AddComponent(JObject args)
+        McpProtocol.ToolCallResult AddComponent(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
             string typeName = GetString(args, "typeName");
@@ -147,7 +147,7 @@ namespace UnityExplorerMCP.Tools
                 return McpProtocol.ToolError($"Failed to add component of type '{type.FullName}'.");
 
             return McpProtocol.ToolSuccess(
-                new JObject
+                new JsonObject
                 {
                     ["success"] = true,
                     ["objectHandle"] = handle,
@@ -157,7 +157,7 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult RemoveComponent(JObject args)
+        McpProtocol.ToolCallResult RemoveComponent(JsonObject args)
         {
             string handle = GetString(args, "objectHandle");
 
@@ -172,7 +172,7 @@ namespace UnityExplorerMCP.Tools
             UnityEngine.Object.Destroy(comp);
 
             return McpProtocol.ToolSuccess(
-                new JObject { ["success"] = true, ["typeName"] = typeName }
+                new JsonObject { ["success"] = true, ["typeName"] = typeName }
             );
         }
 

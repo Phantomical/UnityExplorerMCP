@@ -1,4 +1,4 @@
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using UnityExplorerMCP.Server;
 
 namespace UnityExplorerMCP.Tools
@@ -19,33 +19,33 @@ namespace UnityExplorerMCP.Tools
 
         public abstract void Register();
 
-        protected static int GetInt(JObject args, string key, int defaultValue = 0)
+        protected static int GetInt(JsonObject args, string key, int defaultValue = 0)
         {
-            var token = args?[key];
-            if (token == null)
+            var node = args?[key];
+            if (node == null)
                 return defaultValue;
-            return token.Value<int>();
+            return node.GetValue<int>();
         }
 
-        protected static string GetString(JObject args, string key, string defaultValue = null)
+        protected static string GetString(JsonObject args, string key, string defaultValue = null)
         {
-            var token = args?[key];
-            if (token == null || token.Type == JTokenType.Null)
+            var node = args?[key];
+            if (node == null)
                 return defaultValue;
-            return token.Value<string>();
+            return node.GetValue<string>();
         }
 
-        protected static bool GetBool(JObject args, string key, bool defaultValue = false)
+        protected static bool GetBool(JsonObject args, string key, bool defaultValue = false)
         {
-            var token = args?[key];
-            if (token == null)
+            var node = args?[key];
+            if (node == null)
                 return defaultValue;
-            return token.Value<bool>();
+            return node.GetValue<bool>();
         }
 
-        protected static bool HasKey(JObject args, string key)
+        protected static bool HasKey(JsonObject args, string key)
         {
-            return args?[key] != null && args[key].Type != JTokenType.Null;
+            return args != null && args.ContainsKey(key) && args[key] != null;
         }
 
         protected McpProtocol.ToolCallResult HandleNotFound(string handle)

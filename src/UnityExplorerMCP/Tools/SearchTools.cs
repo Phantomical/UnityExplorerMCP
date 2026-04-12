@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityExplorerMCP.Serialization;
@@ -57,7 +57,7 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult SearchObjects(JObject args)
+        McpProtocol.ToolCallResult SearchObjects(JsonObject args)
         {
             string nameFilter = GetString(args, "nameFilter");
             string typeName = GetString(args, "typeName");
@@ -80,7 +80,7 @@ namespace UnityExplorerMCP.Tools
             }
 
             var allObjects = Resources.FindObjectsOfTypeAll(searchType);
-            var results = new List<JObject>();
+            var results = new List<JsonObject>();
             bool shouldFilterGOs =
                 searchType == typeof(GameObject) || typeof(Component).IsAssignableFrom(searchType);
 
@@ -131,7 +131,7 @@ namespace UnityExplorerMCP.Tools
                 }
 
                 results.Add(
-                    new JObject
+                    new JsonObject
                     {
                         ["objectHandle"] = Registry.Register(obj),
                         ["instanceId"] = obj.GetInstanceID(),
@@ -148,11 +148,15 @@ namespace UnityExplorerMCP.Tools
             var paged = results.Skip(offset).Take(limit).ToList();
 
             return McpProtocol.ToolSuccess(
-                new JObject { ["totalCount"] = totalCount, ["results"] = new JArray(paged) }
+                new JsonObject
+                {
+                    ["totalCount"] = totalCount,
+                    ["results"] = new JsonArray(paged.ToArray()),
+                }
             );
         }
 
-        McpProtocol.ToolCallResult SearchTypes(JObject args)
+        McpProtocol.ToolCallResult SearchTypes(JsonObject args)
         {
             string nameFilter = GetString(args, "nameFilter");
             int limit = GetInt(args, "limit", 25);
@@ -161,11 +165,11 @@ namespace UnityExplorerMCP.Tools
             int totalCount = TypeResolver.CountTypes(nameFilter);
             var types = TypeResolver.SearchTypes(nameFilter, limit, offset);
 
-            var results = new JArray();
+            var results = new JsonArray();
             foreach (var type in types)
             {
                 results.Add(
-                    new JObject
+                    new JsonObject
                     {
                         ["typeName"] = type.Name,
                         ["typeFullName"] = type.FullName,
@@ -180,11 +184,11 @@ namespace UnityExplorerMCP.Tools
             }
 
             return McpProtocol.ToolSuccess(
-                new JObject { ["totalCount"] = totalCount, ["types"] = results }
+                new JsonObject { ["totalCount"] = totalCount, ["types"] = results }
             );
         }
 
-        McpProtocol.ToolCallResult SearchSingletons(JObject args)
+        McpProtocol.ToolCallResult SearchSingletons(JsonObject args)
         {
             string nameFilter = GetString(args, "nameFilter");
             int limit = GetInt(args, "limit", 25);
@@ -204,7 +208,7 @@ namespace UnityExplorerMCP.Tools
                 "<instance>k__BackingField",
             };
 
-            var results = new List<JObject>();
+            var results = new List<JsonObject>();
             const BindingFlags flags =
                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
 
@@ -249,7 +253,7 @@ namespace UnityExplorerMCP.Tools
                                 continue;
 
                             results.Add(
-                                new JObject
+                                new JsonObject
                                 {
                                     ["objectHandle"] = Registry.RegisterManaged(value),
                                     ["typeName"] = type.Name,
@@ -269,7 +273,11 @@ namespace UnityExplorerMCP.Tools
             var paged = results.Skip(offset).Take(limit).ToList();
 
             return McpProtocol.ToolSuccess(
-                new JObject { ["totalCount"] = totalCount, ["singletons"] = new JArray(paged) }
+                new JsonObject
+                {
+                    ["totalCount"] = totalCount,
+                    ["singletons"] = new JsonArray(paged.ToArray()),
+                }
             );
         }
 
