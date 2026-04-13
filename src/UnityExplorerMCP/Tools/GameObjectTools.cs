@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Text.Json.Nodes;
 using UnityEngine;
 using UnityExplorerMCP.Server;
@@ -10,64 +9,93 @@ namespace UnityExplorerMCP.Tools
         public GameObjectTools(ObjectRegistry.ObjectRegistry registry, ToolRegistry tools)
             : base(registry, tools) { }
 
+        #region Parameter Types
+
+        public struct GetGameObjectParams
+        {
+            [McpParam("Handle of the GameObject", Required = true)]
+            public string ObjectHandle { get; set; }
+        }
+
+        public struct SetGameObjectParams
+        {
+            [McpParam("Handle of the GameObject", Required = true)]
+            public string ObjectHandle { get; set; }
+
+            [McpParam("New name")]
+            public string Name { get; set; }
+
+            [McpParam("Set active/inactive")]
+            public bool? ActiveSelf { get; set; }
+
+            [McpParam("Set layer")]
+            public int? Layer { get; set; }
+
+            [McpParam("Set tag")]
+            public string Tag { get; set; }
+
+            [McpParam("Set static flag")]
+            public bool? IsStatic { get; set; }
+        }
+
+        public struct GetTransformParams
+        {
+            [McpParam("Handle of the GameObject", Required = true)]
+            public string ObjectHandle { get; set; }
+        }
+
+        public struct SetTransformParams
+        {
+            [McpParam("Handle of the GameObject", Required = true)]
+            public string ObjectHandle { get; set; }
+
+            [McpParam("World position {x,y,z}")]
+            public Vec3Param? Position { get; set; }
+
+            [McpParam("Local position {x,y,z}")]
+            public Vec3Param? LocalPosition { get; set; }
+
+            [McpParam("Local Euler angles {x,y,z}")]
+            public Vec3Param? Rotation { get; set; }
+
+            [McpParam("Local scale {x,y,z}")]
+            public Vec3Param? LocalScale { get; set; }
+        }
+
+        #endregion
+
         public override void Register()
         {
-            Tools.Register(
+            Tools.Register<GetGameObjectParams>(
                 "get_gameobject",
                 "Get detailed information about a GameObject: name, active state, layer, tag, transform, children (first 20), and all components.",
-                @"{
-                    ""objectHandle"": { ""type"": ""string"", ""description"": ""Handle of the GameObject"" }
-                }",
-                new[] { "objectHandle" },
                 GetGameObject
             );
 
-            Tools.Register(
+            Tools.Register<SetGameObjectParams>(
                 "set_gameobject",
                 "Modify properties of a GameObject. Only specified fields are changed.",
-                @"{
-                    ""objectHandle"": { ""type"": ""string"", ""description"": ""Handle of the GameObject"" },
-                    ""name"":       { ""type"": ""string"",  ""description"": ""New name"" },
-                    ""activeSelf"": { ""type"": ""boolean"", ""description"": ""Set active/inactive"" },
-                    ""layer"":      { ""type"": ""integer"", ""description"": ""Set layer"" },
-                    ""tag"":        { ""type"": ""string"",  ""description"": ""Set tag"" },
-                    ""isStatic"":   { ""type"": ""boolean"", ""description"": ""Set static flag"" }
-                }",
-                new[] { "objectHandle" },
                 SetGameObject
             );
 
-            Tools.Register(
+            Tools.Register<GetTransformParams>(
                 "get_transform",
                 "Get detailed transform information: world/local position, rotation, scale, forward/up/right vectors.",
-                @"{
-                    ""objectHandle"": { ""type"": ""string"", ""description"": ""Handle of the GameObject"" }
-                }",
-                new[] { "objectHandle" },
                 GetTransform
             );
 
-            Tools.Register(
+            Tools.Register<SetTransformParams>(
                 "set_transform",
                 "Set transform properties. Only specified fields are modified.",
-                @"{
-                    ""objectHandle"":  { ""type"": ""string"", ""description"": ""Handle of the GameObject"" },
-                    ""position"":      { ""type"": ""object"", ""description"": ""World position {x,y,z}"", ""properties"": {""x"":{""type"":""number""},""y"":{""type"":""number""},""z"":{""type"":""number""}} },
-                    ""localPosition"": { ""type"": ""object"", ""description"": ""Local position {x,y,z}"", ""properties"": {""x"":{""type"":""number""},""y"":{""type"":""number""},""z"":{""type"":""number""}} },
-                    ""rotation"":      { ""type"": ""object"", ""description"": ""Local Euler angles {x,y,z}"", ""properties"": {""x"":{""type"":""number""},""y"":{""type"":""number""},""z"":{""type"":""number""}} },
-                    ""localScale"":    { ""type"": ""object"", ""description"": ""Local scale {x,y,z}"", ""properties"": {""x"":{""type"":""number""},""y"":{""type"":""number""},""z"":{""type"":""number""}} }
-                }",
-                new[] { "objectHandle" },
                 SetTransform
             );
         }
 
-        McpProtocol.ToolCallResult GetGameObject(JsonObject args)
+        McpProtocol.ToolCallResult GetGameObject(GetGameObjectParams args)
         {
-            string handle = GetString(args, "objectHandle");
-            var go = ResolveGameObject(handle);
+            var go = ResolveGameObject(args.ObjectHandle);
             if (go == null)
-                return HandleNotFound(handle);
+                return HandleNotFound(args.ObjectHandle);
 
             var transform = go.transform;
 
@@ -111,7 +139,7 @@ namespace UnityExplorerMCP.Tools
             return McpProtocol.ToolSuccess(
                 new JsonObject
                 {
-                    ["objectHandle"] = handle,
+                    ["objectHandle"] = args.ObjectHandle,
                     ["instanceId"] = go.GetInstanceID(),
                     ["name"] = go.name,
                     ["activeSelf"] = go.activeSelf,
@@ -142,38 +170,37 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult SetGameObject(JsonObject args)
+        McpProtocol.ToolCallResult SetGameObject(SetGameObjectParams args)
         {
-            string handle = GetString(args, "objectHandle");
-            var go = ResolveGameObject(handle);
+            var go = ResolveGameObject(args.ObjectHandle);
             if (go == null)
-                return HandleNotFound(handle);
+                return HandleNotFound(args.ObjectHandle);
 
             var updated = new JsonArray();
 
-            if (HasKey(args, "name"))
+            if (args.Name != null)
             {
-                go.name = GetString(args, "name");
+                go.name = args.Name;
                 updated.Add("name");
             }
-            if (HasKey(args, "activeSelf"))
+            if (args.ActiveSelf.HasValue)
             {
-                go.SetActive(GetBool(args, "activeSelf"));
+                go.SetActive(args.ActiveSelf.Value);
                 updated.Add("activeSelf");
             }
-            if (HasKey(args, "layer"))
+            if (args.Layer.HasValue)
             {
-                go.layer = GetInt(args, "layer");
+                go.layer = args.Layer.Value;
                 updated.Add("layer");
             }
-            if (HasKey(args, "tag"))
+            if (args.Tag != null)
             {
-                go.tag = GetString(args, "tag");
+                go.tag = args.Tag;
                 updated.Add("tag");
             }
-            if (HasKey(args, "isStatic"))
+            if (args.IsStatic.HasValue)
             {
-                go.isStatic = GetBool(args, "isStatic");
+                go.isStatic = args.IsStatic.Value;
                 updated.Add("isStatic");
             }
 
@@ -181,24 +208,23 @@ namespace UnityExplorerMCP.Tools
                 new JsonObject
                 {
                     ["success"] = true,
-                    ["objectHandle"] = handle,
+                    ["objectHandle"] = args.ObjectHandle,
                     ["updatedProperties"] = updated,
                 }
             );
         }
 
-        McpProtocol.ToolCallResult GetTransform(JsonObject args)
+        McpProtocol.ToolCallResult GetTransform(GetTransformParams args)
         {
-            string handle = GetString(args, "objectHandle");
-            var go = ResolveGameObject(handle);
+            var go = ResolveGameObject(args.ObjectHandle);
             if (go == null)
-                return HandleNotFound(handle);
+                return HandleNotFound(args.ObjectHandle);
 
             var t = go.transform;
             return McpProtocol.ToolSuccess(
                 new JsonObject
                 {
-                    ["objectHandle"] = handle,
+                    ["objectHandle"] = args.ObjectHandle,
                     ["position"] = Vec3(t.position),
                     ["localPosition"] = Vec3(t.localPosition),
                     ["rotation"] = new JsonObject
@@ -218,34 +244,33 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult SetTransform(JsonObject args)
+        McpProtocol.ToolCallResult SetTransform(SetTransformParams args)
         {
-            string handle = GetString(args, "objectHandle");
-            var go = ResolveGameObject(handle);
+            var go = ResolveGameObject(args.ObjectHandle);
             if (go == null)
-                return HandleNotFound(handle);
+                return HandleNotFound(args.ObjectHandle);
 
             var t = go.transform;
             var updated = new JsonArray();
 
-            if (HasKey(args, "position"))
+            if (args.Position.HasValue)
             {
-                t.position = ParseVec3(args["position"] as JsonObject);
+                t.position = args.Position.Value.ToVector3();
                 updated.Add("position");
             }
-            if (HasKey(args, "localPosition"))
+            if (args.LocalPosition.HasValue)
             {
-                t.localPosition = ParseVec3(args["localPosition"] as JsonObject);
+                t.localPosition = args.LocalPosition.Value.ToVector3();
                 updated.Add("localPosition");
             }
-            if (HasKey(args, "rotation"))
+            if (args.Rotation.HasValue)
             {
-                t.localEulerAngles = ParseVec3(args["rotation"] as JsonObject);
+                t.localEulerAngles = args.Rotation.Value.ToVector3();
                 updated.Add("rotation");
             }
-            if (HasKey(args, "localScale"))
+            if (args.LocalScale.HasValue)
             {
-                t.localScale = ParseVec3(args["localScale"] as JsonObject);
+                t.localScale = args.LocalScale.Value.ToVector3();
                 updated.Add("localScale");
             }
 
@@ -253,7 +278,7 @@ namespace UnityExplorerMCP.Tools
                 new JsonObject
                 {
                     ["success"] = true,
-                    ["objectHandle"] = handle,
+                    ["objectHandle"] = args.ObjectHandle,
                     ["updatedProperties"] = updated,
                 }
             );
@@ -278,17 +303,6 @@ namespace UnityExplorerMCP.Tools
                 ["y"] = v.y,
                 ["z"] = v.z,
             };
-
-        static Vector3 ParseVec3(JsonObject obj)
-        {
-            if (obj == null)
-                return Vector3.zero;
-            return new Vector3(
-                obj["x"]?.GetValue<float>() ?? 0,
-                obj["y"]?.GetValue<float>() ?? 0,
-                obj["z"]?.GetValue<float>() ?? 0
-            );
-        }
 
         static string GetFullPath(Transform t)
         {

@@ -9,70 +9,77 @@ namespace UnityExplorerMCP.Tools
         public RaycastTools(ObjectRegistry.ObjectRegistry registry, ToolRegistry tools)
             : base(registry, tools) { }
 
+        #region Parameter Types
+
+        public struct RaycastParams
+        {
+            [McpParam(
+                "'screen' (from camera through screen point) or 'world' (explicit origin+direction)",
+                Required = true,
+                EnumValues = new[] { "screen", "world" }
+            )]
+            public string Mode { get; set; }
+
+            [McpParam("Screen coordinates {x,y}. Required for mode='screen'.")]
+            public Vec2Param? ScreenPosition { get; set; }
+
+            [McpParam("Ray origin {x,y,z}. Required for mode='world'.")]
+            public Vec3Param? Origin { get; set; }
+
+            [McpParam("Ray direction {x,y,z}. Required for mode='world'.")]
+            public Vec3Param? Direction { get; set; }
+
+            [McpParam("Max ray distance (default 1000)")]
+            public float? MaxDistance { get; set; }
+
+            [McpParam("Physics layer mask (default: all layers)")]
+            public int? LayerMask { get; set; }
+        }
+
+        #endregion
+
         public override void Register()
         {
-            Tools.Register(
+            Tools.Register<RaycastParams>(
                 "raycast",
                 "Cast a ray into the scene and return what it hits. Use 'screen' mode with a screen position (uses main camera) or 'world' mode with an origin and direction.",
-                @"{
-                    ""mode"":           { ""type"": ""string"", ""enum"": [""screen"",""world""], ""description"": ""'screen' (from camera through screen point) or 'world' (explicit origin+direction)"" },
-                    ""screenPosition"": { ""type"": ""object"", ""description"": ""Screen coordinates {x,y}. Required for mode='screen'."", ""properties"": {""x"":{""type"":""number""},""y"":{""type"":""number""}} },
-                    ""origin"":         { ""type"": ""object"", ""description"": ""Ray origin {x,y,z}. Required for mode='world'."", ""properties"": {""x"":{""type"":""number""},""y"":{""type"":""number""},""z"":{""type"":""number""}} },
-                    ""direction"":      { ""type"": ""object"", ""description"": ""Ray direction {x,y,z}. Required for mode='world'."", ""properties"": {""x"":{""type"":""number""},""y"":{""type"":""number""},""z"":{""type"":""number""}} },
-                    ""maxDistance"":     { ""type"": ""number"", ""description"": ""Max ray distance (default 1000)"" },
-                    ""layerMask"":       { ""type"": ""integer"", ""description"": ""Physics layer mask (default: all layers)"" }
-                }",
-                new[] { "mode" },
                 Raycast
             );
         }
 
-        McpProtocol.ToolCallResult Raycast(JsonObject args)
+        McpProtocol.ToolCallResult Raycast(RaycastParams args)
         {
-            string mode = GetString(args, "mode");
-            float maxDistance = args?["maxDistance"]?.GetValue<float>() ?? 1000f;
-            int layerMask = GetInt(args, "layerMask", -1); // -1 = all layers
+            float maxDistance = args.MaxDistance ?? 1000f;
+            int layerMask = args.LayerMask ?? -1; // -1 = all layers
 
             Ray ray;
 
-            if (mode == "screen")
+            if (args.Mode == "screen")
             {
                 var cam = Camera.main;
                 if (cam == null)
                     return McpProtocol.ToolError("No main camera found.");
 
-                var screenPos = args?["screenPosition"] as JsonObject;
-                if (screenPos == null)
+                if (!args.ScreenPosition.HasValue)
                     return McpProtocol.ToolError("screenPosition is required for screen mode.");
 
-                float x = screenPos["x"]?.GetValue<float>() ?? 0;
-                float y = screenPos["y"]?.GetValue<float>() ?? 0;
-                ray = cam.ScreenPointToRay(new Vector3(x, y, 0));
+                var sp = args.ScreenPosition.Value;
+                ray = cam.ScreenPointToRay(new Vector3(sp.X, sp.Y, 0));
             }
-            else if (mode == "world")
+            else if (args.Mode == "world")
             {
-                var originObj = args?["origin"] as JsonObject;
-                var dirObj = args?["direction"] as JsonObject;
-                if (originObj == null || dirObj == null)
+                if (!args.Origin.HasValue || !args.Direction.HasValue)
                     return McpProtocol.ToolError(
                         "origin and direction are required for world mode."
                     );
 
-                var origin = new Vector3(
-                    originObj["x"]?.GetValue<float>() ?? 0,
-                    originObj["y"]?.GetValue<float>() ?? 0,
-                    originObj["z"]?.GetValue<float>() ?? 0
-                );
-                var direction = new Vector3(
-                    dirObj["x"]?.GetValue<float>() ?? 0,
-                    dirObj["y"]?.GetValue<float>() ?? 0,
-                    dirObj["z"]?.GetValue<float>() ?? 0
-                );
-                ray = new Ray(origin, direction);
+                ray = new Ray(args.Origin.Value.ToVector3(), args.Direction.Value.ToVector3());
             }
             else
             {
-                return McpProtocol.ToolError($"Invalid mode: {mode}. Use 'screen' or 'world'.");
+                return McpProtocol.ToolError(
+                    $"Invalid mode: {args.Mode}. Use 'screen' or 'world'."
+                );
             }
 
             if (Physics.Raycast(ray, out RaycastHit hit, maxDistance, layerMask))

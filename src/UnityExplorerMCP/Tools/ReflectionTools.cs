@@ -26,104 +26,155 @@ namespace UnityExplorerMCP.Tools
             _deserializer = new ValueDeserializer(registry);
         }
 
+        #region Parameter Types
+
+        public struct GetMembersParams
+        {
+            [McpParam("Handle of an object instance to inspect (mutually exclusive with typeName)")]
+            public string ObjectHandle { get; set; }
+
+            [McpParam(
+                "Full type name for static-only inspection (mutually exclusive with objectHandle)"
+            )]
+            public string TypeName { get; set; }
+
+            [McpParam("Filter: ['field','property','method','constructor']. Default: all.")]
+            public string[] MemberTypes { get; set; }
+
+            [McpParam(
+                "Filter by scope. Default: all.",
+                EnumValues = new[] { "all", "instance", "static" }
+            )]
+            public string Scope { get; set; }
+
+            [McpParam("Case-insensitive substring filter on member names.")]
+            public string NameFilter { get; set; }
+
+            [McpParam("Max results (default 50)")]
+            public int? Limit { get; set; }
+
+            [McpParam("Pagination offset (default 0)")]
+            public int? Offset { get; set; }
+        }
+
+        public struct GetValueParams
+        {
+            [McpParam("Handle of the object instance (omit for static)")]
+            public string ObjectHandle { get; set; }
+
+            [McpParam("Required if objectHandle is omitted (static access)")]
+            public string TypeName { get; set; }
+
+            [McpParam("Name of the field or property", Required = true)]
+            public string MemberName { get; set; }
+
+            [McpParam("Index arguments for indexed properties")]
+            public string[] IndexArguments { get; set; }
+        }
+
+        public struct SetValueParams
+        {
+            [McpParam("Handle of the object instance (omit for static)")]
+            public string ObjectHandle { get; set; }
+
+            [McpParam("For static members")]
+            public string TypeName { get; set; }
+
+            [McpParam("Name of the field or property", Required = true)]
+            public string MemberName { get; set; }
+
+            [McpParam(
+                "Value as a string, parsed using the member's declared type",
+                Required = true
+            )]
+            public string Value { get; set; }
+        }
+
+        public struct InvokeMethodParams
+        {
+            [McpParam("Handle of the object instance (omit for static)")]
+            public string ObjectHandle { get; set; }
+
+            [McpParam("For static methods")]
+            public string TypeName { get; set; }
+
+            [McpParam("Name of the method to invoke", Required = true)]
+            public string MethodName { get; set; }
+
+            [McpParam("Method arguments as strings, in order")]
+            public string[] Arguments { get; set; }
+
+            [McpParam("Type names for generic method arguments")]
+            public string[] GenericTypeArguments { get; set; }
+        }
+
+        public struct GetTypeInfoParams
+        {
+            [McpParam("Full or short name of the type", Required = true)]
+            public string TypeName { get; set; }
+        }
+
+        #endregion
+
         public override void Register()
         {
-            Tools.Register(
+            Tools.Register<GetMembersParams>(
                 "get_members",
                 "List fields, properties, methods, and constructors of an object or type. Auto-evaluates simple field/property values. Supports filtering by member type, scope, and name.",
-                @"{
-                    ""objectHandle"": { ""type"": ""string"", ""description"": ""Handle of an object instance to inspect (mutually exclusive with typeName)"" },
-                    ""typeName"":     { ""type"": ""string"", ""description"": ""Full type name for static-only inspection (mutually exclusive with objectHandle)"" },
-                    ""memberTypes"":  { ""type"": ""array"", ""items"": { ""type"": ""string"" }, ""description"": ""Filter: ['field','property','method','constructor']. Default: all."" },
-                    ""scope"":        { ""type"": ""string"", ""enum"": [""all"",""instance"",""static""], ""description"": ""Filter by scope. Default: all."" },
-                    ""nameFilter"":   { ""type"": ""string"", ""description"": ""Case-insensitive substring filter on member names."" },
-                    ""limit"":        { ""type"": ""integer"", ""description"": ""Max results (default 50)"" },
-                    ""offset"":       { ""type"": ""integer"", ""description"": ""Pagination offset (default 0)"" }
-                }",
-                null,
                 GetMembers
             );
 
-            Tools.Register(
+            Tools.Register<GetValueParams>(
                 "get_value",
                 "Get the value of a specific field or property. Supports indexed properties via indexArguments.",
-                @"{
-                    ""objectHandle"":   { ""type"": ""string"", ""description"": ""Handle of the object instance (omit for static)"" },
-                    ""typeName"":       { ""type"": ""string"", ""description"": ""Required if objectHandle is omitted (static access)"" },
-                    ""memberName"":     { ""type"": ""string"", ""description"": ""Name of the field or property"" },
-                    ""indexArguments"":  { ""type"": ""array"", ""items"": { ""type"": ""string"" }, ""description"": ""Index arguments for indexed properties"" }
-                }",
-                new[] { "memberName" },
                 GetValue
             );
 
-            Tools.Register(
+            Tools.Register<SetValueParams>(
                 "set_value",
                 "Set the value of a field or property. Value is passed as a string and parsed based on the member's type.",
-                @"{
-                    ""objectHandle"": { ""type"": ""string"", ""description"": ""Handle of the object instance (omit for static)"" },
-                    ""typeName"":     { ""type"": ""string"", ""description"": ""For static members"" },
-                    ""memberName"":   { ""type"": ""string"", ""description"": ""Name of the field or property"" },
-                    ""value"":        { ""type"": ""string"", ""description"": ""Value as a string, parsed using the member's declared type"" }
-                }",
-                new[] { "memberName", "value" },
                 SetValue
             );
 
-            Tools.Register(
+            Tools.Register<InvokeMethodParams>(
                 "invoke_method",
                 "Invoke a method on an object or type. Arguments are passed as strings and parsed based on parameter types.",
-                @"{
-                    ""objectHandle"":         { ""type"": ""string"", ""description"": ""Handle of the object instance (omit for static)"" },
-                    ""typeName"":             { ""type"": ""string"", ""description"": ""For static methods"" },
-                    ""methodName"":           { ""type"": ""string"", ""description"": ""Name of the method to invoke"" },
-                    ""arguments"":            { ""type"": ""array"", ""items"": { ""type"": ""string"" }, ""description"": ""Method arguments as strings, in order"" },
-                    ""genericTypeArguments"": { ""type"": ""array"", ""items"": { ""type"": ""string"" }, ""description"": ""Type names for generic method arguments"" }
-                }",
-                new[] { "methodName" },
                 InvokeMethod
             );
 
-            Tools.Register(
+            Tools.Register<GetTypeInfoParams>(
                 "get_type_info",
                 "Get detailed information about a C# type: base type, interfaces, enum values, member counts.",
-                @"{
-                    ""typeName"": { ""type"": ""string"", ""description"": ""Full or short name of the type"" }
-                }",
-                new[] { "typeName" },
                 GetTypeInfo
             );
         }
 
-        McpProtocol.ToolCallResult GetMembers(JsonObject args)
+        McpProtocol.ToolCallResult GetMembers(GetMembersParams args)
         {
-            string handle = GetString(args, "objectHandle");
-            string typeName = GetString(args, "typeName");
-            string scope = GetString(args, "scope", "all");
-            string nameFilter = GetString(args, "nameFilter");
-            int limit = GetInt(args, "limit", 50);
-            int offset = GetInt(args, "offset", 0);
+            string scope = args.Scope ?? "all";
+            int limit = args.Limit ?? 50;
+            int offset = args.Offset ?? 0;
 
             var memberTypeFilter = new HashSet<string>();
-            if (args?["memberTypes"] is JsonArray mtArr)
-                foreach (var t in mtArr)
-                    memberTypeFilter.Add(t.GetValue<string>().ToLowerInvariant());
+            if (args.MemberTypes != null)
+                foreach (var t in args.MemberTypes)
+                    memberTypeFilter.Add(t.ToLowerInvariant());
 
             object instance = null;
             Type type;
 
-            if (!string.IsNullOrEmpty(handle))
+            if (!string.IsNullOrEmpty(args.ObjectHandle))
             {
-                instance = Registry.Resolve(handle);
+                instance = Registry.Resolve(args.ObjectHandle);
                 if (instance == null)
-                    return HandleNotFound(handle);
+                    return HandleNotFound(args.ObjectHandle);
                 type = instance.GetType();
             }
-            else if (!string.IsNullOrEmpty(typeName))
+            else if (!string.IsNullOrEmpty(args.TypeName))
             {
-                type = TypeResolver.FindType(typeName);
+                type = TypeResolver.FindType(args.TypeName);
                 if (type == null)
-                    return McpProtocol.ToolError($"Type not found: {typeName}");
+                    return McpProtocol.ToolError($"Type not found: {args.TypeName}");
             }
             else
             {
@@ -140,7 +191,7 @@ namespace UnityExplorerMCP.Tools
                 {
                     if (!MatchesScope(field.IsStatic, scope, isStaticOnly))
                         continue;
-                    if (!MatchesNameFilter(field.Name, nameFilter))
+                    if (!MatchesNameFilter(field.Name, args.NameFilter))
                         continue;
 
                     var member = new JsonObject
@@ -168,7 +219,7 @@ namespace UnityExplorerMCP.Tools
                     bool isStatic = (prop.GetMethod ?? prop.SetMethod)?.IsStatic ?? false;
                     if (!MatchesScope(isStatic, scope, isStaticOnly))
                         continue;
-                    if (!MatchesNameFilter(prop.Name, nameFilter))
+                    if (!MatchesNameFilter(prop.Name, args.NameFilter))
                         continue;
 
                     var indexParams = prop.GetIndexParameters();
@@ -200,7 +251,7 @@ namespace UnityExplorerMCP.Tools
                 {
                     if (!MatchesScope(method.IsStatic, scope, isStaticOnly))
                         continue;
-                    if (!MatchesNameFilter(method.Name, nameFilter))
+                    if (!MatchesNameFilter(method.Name, args.NameFilter))
                         continue;
                     // Skip property accessors and event methods
                     if (method.IsSpecialName)
@@ -268,7 +319,7 @@ namespace UnityExplorerMCP.Tools
             return McpProtocol.ToolSuccess(
                 new JsonObject
                 {
-                    ["targetHandle"] = handle,
+                    ["targetHandle"] = args.ObjectHandle,
                     ["typeName"] = type.Name,
                     ["typeFullName"] = type.FullName,
                     ["assemblyName"] = type.Assembly.GetName().Name,
@@ -279,143 +330,127 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult GetValue(JsonObject args)
+        McpProtocol.ToolCallResult GetValue(GetValueParams args)
         {
-            string handle = GetString(args, "objectHandle");
-            string typeName = GetString(args, "typeName");
-            string memberName = GetString(args, "memberName");
-
-            var (instance, type, error) = ResolveTarget(handle, typeName);
+            var (instance, type, error) = ResolveTarget(args.ObjectHandle, args.TypeName);
             if (error != null)
                 return error;
 
             // Try field
-            var field = type.GetField(memberName, AllFlags);
+            var field = type.GetField(args.MemberName, AllFlags);
             if (field != null)
             {
                 object value = field.GetValue(instance);
-                return FormatValueResult(memberName, value, field.FieldType);
+                return FormatValueResult(args.MemberName, value, field.FieldType);
             }
 
             // Try property
-            var prop = type.GetProperty(memberName, AllFlags);
+            var prop = type.GetProperty(args.MemberName, AllFlags);
             if (prop != null)
             {
                 if (!prop.CanRead)
-                    return McpProtocol.ToolError($"Property '{memberName}' is write-only.");
+                    return McpProtocol.ToolError($"Property '{args.MemberName}' is write-only.");
 
                 object[] indexArgs = null;
-                if (args?["indexArguments"] is JsonArray idxArr && idxArr.Count > 0)
+                if (args.IndexArguments != null && args.IndexArguments.Length > 0)
                 {
                     var indexParams = prop.GetIndexParameters();
-                    indexArgs = new object[idxArr.Count];
-                    for (int i = 0; i < idxArr.Count; i++)
+                    indexArgs = new object[args.IndexArguments.Length];
+                    for (int i = 0; i < args.IndexArguments.Length; i++)
                         indexArgs[i] = _deserializer.Deserialize(
-                            idxArr[i].GetValue<string>(),
+                            args.IndexArguments[i],
                             indexParams[i].ParameterType
                         );
                 }
 
                 object value = prop.GetValue(instance, indexArgs);
-                return FormatValueResult(memberName, value, prop.PropertyType);
+                return FormatValueResult(args.MemberName, value, prop.PropertyType);
             }
 
             return McpProtocol.ToolError(
-                $"Member '{memberName}' not found on type '{type.FullName}'."
+                $"Member '{args.MemberName}' not found on type '{type.FullName}'."
             );
         }
 
-        McpProtocol.ToolCallResult SetValue(JsonObject args)
+        McpProtocol.ToolCallResult SetValue(SetValueParams args)
         {
-            string handle = GetString(args, "objectHandle");
-            string typeName = GetString(args, "typeName");
-            string memberName = GetString(args, "memberName");
-            string valueStr = GetString(args, "value");
-
-            var (instance, type, error) = ResolveTarget(handle, typeName);
+            var (instance, type, error) = ResolveTarget(args.ObjectHandle, args.TypeName);
             if (error != null)
                 return error;
 
             // Try field
-            var field = type.GetField(memberName, AllFlags);
+            var field = type.GetField(args.MemberName, AllFlags);
             if (field != null)
             {
                 if (field.IsLiteral || field.IsInitOnly)
-                    return McpProtocol.ToolError($"Field '{memberName}' is read-only.");
+                    return McpProtocol.ToolError($"Field '{args.MemberName}' is read-only.");
 
-                object parsed = _deserializer.Deserialize(valueStr, field.FieldType);
+                object parsed = _deserializer.Deserialize(args.Value, field.FieldType);
                 field.SetValue(instance, parsed);
 
                 return McpProtocol.ToolSuccess(
                     new JsonObject
                     {
                         ["success"] = true,
-                        ["memberName"] = memberName,
+                        ["memberName"] = args.MemberName,
                         ["newValue"] = _serializer.Serialize(parsed, field.FieldType),
                     }
                 );
             }
 
             // Try property
-            var prop = type.GetProperty(memberName, AllFlags);
+            var prop = type.GetProperty(args.MemberName, AllFlags);
             if (prop != null)
             {
                 if (!prop.CanWrite)
-                    return McpProtocol.ToolError($"Property '{memberName}' is read-only.");
+                    return McpProtocol.ToolError($"Property '{args.MemberName}' is read-only.");
 
-                object parsed = _deserializer.Deserialize(valueStr, prop.PropertyType);
+                object parsed = _deserializer.Deserialize(args.Value, prop.PropertyType);
                 prop.SetValue(instance, parsed);
 
                 return McpProtocol.ToolSuccess(
                     new JsonObject
                     {
                         ["success"] = true,
-                        ["memberName"] = memberName,
+                        ["memberName"] = args.MemberName,
                         ["newValue"] = _serializer.Serialize(parsed, prop.PropertyType),
                     }
                 );
             }
 
             return McpProtocol.ToolError(
-                $"Member '{memberName}' not found on type '{type.FullName}'."
+                $"Member '{args.MemberName}' not found on type '{type.FullName}'."
             );
         }
 
-        McpProtocol.ToolCallResult InvokeMethod(JsonObject args)
+        McpProtocol.ToolCallResult InvokeMethod(InvokeMethodParams args)
         {
-            string handle = GetString(args, "objectHandle");
-            string typeName = GetString(args, "typeName");
-            string methodName = GetString(args, "methodName");
-
-            var (instance, type, error) = ResolveTarget(handle, typeName);
+            var (instance, type, error) = ResolveTarget(args.ObjectHandle, args.TypeName);
             if (error != null)
                 return error;
 
             // Parse generic type arguments if present
             Type[] genericArgs = null;
-            if (args?["genericTypeArguments"] is JsonArray genArr && genArr.Count > 0)
+            if (args.GenericTypeArguments != null && args.GenericTypeArguments.Length > 0)
             {
-                genericArgs = new Type[genArr.Count];
-                for (int i = 0; i < genArr.Count; i++)
+                genericArgs = new Type[args.GenericTypeArguments.Length];
+                for (int i = 0; i < args.GenericTypeArguments.Length; i++)
                 {
-                    genericArgs[i] = TypeResolver.FindType(genArr[i].GetValue<string>());
+                    genericArgs[i] = TypeResolver.FindType(args.GenericTypeArguments[i]);
                     if (genericArgs[i] == null)
                         return McpProtocol.ToolError(
-                            $"Generic type argument not found: {genArr[i]}"
+                            $"Generic type argument not found: {args.GenericTypeArguments[i]}"
                         );
                 }
             }
 
             // Find matching method
-            var argStrings = new List<string>();
-            if (args?["arguments"] is JsonArray argArr)
-                foreach (var a in argArr)
-                    argStrings.Add(a.GetValue<string>());
+            var argStrings = args.Arguments ?? Array.Empty<string>();
 
-            MethodInfo method = FindMethod(type, methodName, argStrings.Count, genericArgs);
+            MethodInfo method = FindMethod(type, args.MethodName, argStrings.Length, genericArgs);
             if (method == null)
                 return McpProtocol.ToolError(
-                    $"Method '{methodName}' with {argStrings.Count} arguments not found on type '{type.FullName}'."
+                    $"Method '{args.MethodName}' with {argStrings.Length} arguments not found on type '{type.FullName}'."
                 );
 
             if (method.IsGenericMethodDefinition && genericArgs != null)
@@ -426,7 +461,7 @@ namespace UnityExplorerMCP.Tools
             var invokeArgs = new object[parameters.Length];
             for (int i = 0; i < parameters.Length; i++)
             {
-                if (i < argStrings.Count)
+                if (i < argStrings.Length)
                     invokeArgs[i] = _deserializer.Deserialize(
                         argStrings[i],
                         parameters[i].ParameterType
@@ -456,7 +491,7 @@ namespace UnityExplorerMCP.Tools
             var response = new JsonObject
             {
                 ["success"] = true,
-                ["methodName"] = methodName,
+                ["methodName"] = args.MethodName,
                 ["isVoid"] = isVoid,
             };
 
@@ -471,10 +506,9 @@ namespace UnityExplorerMCP.Tools
             return McpProtocol.ToolSuccess(response);
         }
 
-        McpProtocol.ToolCallResult GetTypeInfo(JsonObject args)
+        McpProtocol.ToolCallResult GetTypeInfo(GetTypeInfoParams args)
         {
-            string typeName = GetString(args, "typeName");
-            Type type = TypeResolver.FindType(typeName);
+            Type type = TypeResolver.FindType(args.TypeName);
 
             if (type == null)
                 return McpProtocol.ToolSuccess(new JsonObject { ["found"] = false });

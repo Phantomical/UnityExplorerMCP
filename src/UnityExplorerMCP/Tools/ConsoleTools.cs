@@ -22,24 +22,34 @@ namespace UnityExplorerMCP.Tools
             _tools = tools;
         }
 
+        #region Parameter Types
+
+        public struct EvaluateCSharpParams
+        {
+            [McpParam(
+                "C# code to evaluate. Can be expressions, statements, using directives, or class definitions.",
+                Required = true
+            )]
+            public string Code { get; set; }
+
+            [McpParam("Additional using directives to add before evaluating.")]
+            public string[] AddUsings { get; set; }
+        }
+
+        #endregion
+
         public void Register()
         {
-            _tools.Register(
+            _tools.Register<EvaluateCSharpParams>(
                 "evaluate_csharp",
                 "Execute C# code using the Mono runtime compiler. Variables and classes persist across calls within the session. Default usings: System, System.Linq, System.Collections.Generic, UnityEngine.",
-                @"{
-                    ""code"":      { ""type"": ""string"", ""description"": ""C# code to evaluate. Can be expressions, statements, using directives, or class definitions."" },
-                    ""addUsings"": { ""type"": ""array"", ""items"": { ""type"": ""string"" }, ""description"": ""Additional using directives to add before evaluating."" }
-                }",
-                new[] { "code" },
                 EvaluateCSharp
             );
         }
 
-        McpProtocol.ToolCallResult EvaluateCSharp(JsonObject args)
+        McpProtocol.ToolCallResult EvaluateCSharp(EvaluateCSharpParams args)
         {
-            string code = args?["code"]?.GetValue<string>();
-            if (string.IsNullOrEmpty(code))
+            if (string.IsNullOrEmpty(args.Code))
                 return McpProtocol.ToolError("Code is required");
 
             if (!EnsureInitialized())
@@ -48,11 +58,11 @@ namespace UnityExplorerMCP.Tools
                 );
 
             // Add usings if requested
-            if (args?["addUsings"] is JsonArray usings)
+            if (args.AddUsings != null)
             {
-                foreach (var u in usings)
+                foreach (var u in args.AddUsings)
                 {
-                    string usingCode = $"using {u.GetValue<string>()};";
+                    string usingCode = $"using {u};";
                     try
                     {
                         InvokeRun(usingCode);
@@ -66,7 +76,7 @@ namespace UnityExplorerMCP.Tools
             try
             {
                 // First try Evaluate (for expressions that return a value)
-                object result = InvokeEvaluate(code);
+                object result = InvokeEvaluate(args.Code);
 
                 var response = new JsonObject
                 {
@@ -88,7 +98,7 @@ namespace UnityExplorerMCP.Tools
                 try
                 {
                     _output.Clear();
-                    bool success = InvokeRun(code);
+                    bool success = InvokeRun(args.Code);
 
                     return McpProtocol.ToolSuccess(
                         new JsonObject

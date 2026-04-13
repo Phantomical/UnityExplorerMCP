@@ -15,63 +15,101 @@ namespace UnityExplorerMCP.Tools
         public SearchTools(ObjectRegistry.ObjectRegistry registry, ToolRegistry tools)
             : base(registry, tools) { }
 
+        #region Parameter Types
+
+        public struct SearchObjectsParams
+        {
+            [McpParam("Case-insensitive name substring filter")]
+            public string NameFilter { get; set; }
+
+            [McpParam("Filter by type (must be a UnityEngine.Object subclass). Default: all.")]
+            public string TypeName { get; set; }
+
+            [McpParam(
+                "Scene filter. Default: any.",
+                EnumValues = new[]
+                {
+                    "any",
+                    "activelyLoaded",
+                    "dontDestroyOnLoad",
+                    "hideAndDontSave",
+                }
+            )]
+            public string SceneFilter { get; set; }
+
+            [McpParam(
+                "Hierarchy filter. Default: any.",
+                EnumValues = new[] { "any", "rootObject", "hasParent" }
+            )]
+            public string ChildFilter { get; set; }
+
+            [McpParam("Max results (default 25)")]
+            public int? Limit { get; set; }
+
+            [McpParam("Pagination offset (default 0)")]
+            public int? Offset { get; set; }
+        }
+
+        public struct SearchTypesParams
+        {
+            [McpParam("Case-insensitive substring filter on the full type name", Required = true)]
+            public string NameFilter { get; set; }
+
+            [McpParam("Max results (default 25)")]
+            public int? Limit { get; set; }
+
+            [McpParam("Pagination offset (default 0)")]
+            public int? Offset { get; set; }
+        }
+
+        public struct SearchSingletonsParams
+        {
+            [McpParam("Case-insensitive filter on the type name")]
+            public string NameFilter { get; set; }
+
+            [McpParam("Max results (default 25)")]
+            public int? Limit { get; set; }
+
+            [McpParam("Pagination offset (default 0)")]
+            public int? Offset { get; set; }
+        }
+
+        #endregion
+
         public override void Register()
         {
-            Tools.Register(
+            Tools.Register<SearchObjectsParams>(
                 "search_objects",
                 "Search for Unity objects by name and/or type, with optional scene and hierarchy filters.",
-                @"{
-                    ""nameFilter"":  { ""type"": ""string"", ""description"": ""Case-insensitive name substring filter"" },
-                    ""typeName"":    { ""type"": ""string"", ""description"": ""Filter by type (must be a UnityEngine.Object subclass). Default: all."" },
-                    ""sceneFilter"": { ""type"": ""string"", ""enum"": [""any"",""activelyLoaded"",""dontDestroyOnLoad"",""hideAndDontSave""], ""description"": ""Scene filter. Default: any."" },
-                    ""childFilter"": { ""type"": ""string"", ""enum"": [""any"",""rootObject"",""hasParent""], ""description"": ""Hierarchy filter. Default: any."" },
-                    ""limit"":       { ""type"": ""integer"", ""description"": ""Max results (default 25)"" },
-                    ""offset"":      { ""type"": ""integer"", ""description"": ""Pagination offset (default 0)"" }
-                }",
-                null,
                 SearchObjects
             );
 
-            Tools.Register(
+            Tools.Register<SearchTypesParams>(
                 "search_types",
                 "Search for C# types across all loaded assemblies by name.",
-                @"{
-                    ""nameFilter"": { ""type"": ""string"", ""description"": ""Case-insensitive substring filter on the full type name"" },
-                    ""limit"":      { ""type"": ""integer"", ""description"": ""Max results (default 25)"" },
-                    ""offset"":     { ""type"": ""integer"", ""description"": ""Pagination offset (default 0)"" }
-                }",
-                new[] { "nameFilter" },
                 SearchTypes
             );
 
-            Tools.Register(
+            Tools.Register<SearchSingletonsParams>(
                 "search_singletons",
                 "Search for singleton instances by scanning assemblies for common instance field patterns (Instance, m_instance, s_Instance, etc.).",
-                @"{
-                    ""nameFilter"": { ""type"": ""string"", ""description"": ""Case-insensitive filter on the type name"" },
-                    ""limit"":      { ""type"": ""integer"", ""description"": ""Max results (default 25)"" },
-                    ""offset"":     { ""type"": ""integer"", ""description"": ""Pagination offset (default 0)"" }
-                }",
-                null,
                 SearchSingletons
             );
         }
 
-        McpProtocol.ToolCallResult SearchObjects(JsonObject args)
+        McpProtocol.ToolCallResult SearchObjects(SearchObjectsParams args)
         {
-            string nameFilter = GetString(args, "nameFilter");
-            string typeName = GetString(args, "typeName");
-            string sceneFilter = GetString(args, "sceneFilter", "any");
-            string childFilter = GetString(args, "childFilter", "any");
-            int limit = GetInt(args, "limit", 25);
-            int offset = GetInt(args, "offset", 0);
+            string sceneFilter = args.SceneFilter ?? "any";
+            string childFilter = args.ChildFilter ?? "any";
+            int limit = args.Limit ?? 25;
+            int offset = args.Offset ?? 0;
 
             Type searchType = typeof(UnityEngine.Object);
-            if (!string.IsNullOrEmpty(typeName))
+            if (!string.IsNullOrEmpty(args.TypeName))
             {
-                var resolved = TypeResolver.FindType(typeName);
+                var resolved = TypeResolver.FindType(args.TypeName);
                 if (resolved == null)
-                    return McpProtocol.ToolError($"Type not found: {typeName}");
+                    return McpProtocol.ToolError($"Type not found: {args.TypeName}");
                 if (!typeof(UnityEngine.Object).IsAssignableFrom(resolved))
                     return McpProtocol.ToolError(
                         $"Type '{resolved.FullName}' is not a UnityEngine.Object subclass."
@@ -91,8 +129,8 @@ namespace UnityExplorerMCP.Tools
 
                 // Name filter
                 if (
-                    !string.IsNullOrEmpty(nameFilter)
-                    && obj.name.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) < 0
+                    !string.IsNullOrEmpty(args.NameFilter)
+                    && obj.name.IndexOf(args.NameFilter, StringComparison.OrdinalIgnoreCase) < 0
                 )
                     continue;
 
@@ -156,14 +194,13 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult SearchTypes(JsonObject args)
+        McpProtocol.ToolCallResult SearchTypes(SearchTypesParams args)
         {
-            string nameFilter = GetString(args, "nameFilter");
-            int limit = GetInt(args, "limit", 25);
-            int offset = GetInt(args, "offset", 0);
+            int limit = args.Limit ?? 25;
+            int offset = args.Offset ?? 0;
 
-            int totalCount = TypeResolver.CountTypes(nameFilter);
-            var types = TypeResolver.SearchTypes(nameFilter, limit, offset);
+            int totalCount = TypeResolver.CountTypes(args.NameFilter);
+            var types = TypeResolver.SearchTypes(args.NameFilter, limit, offset);
 
             var results = new JsonArray();
             foreach (var type in types)
@@ -188,11 +225,10 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult SearchSingletons(JsonObject args)
+        McpProtocol.ToolCallResult SearchSingletons(SearchSingletonsParams args)
         {
-            string nameFilter = GetString(args, "nameFilter");
-            int limit = GetInt(args, "limit", 25);
-            int offset = GetInt(args, "offset", 0);
+            int limit = args.Limit ?? 25;
+            int offset = args.Offset ?? 0;
 
             var singletonFieldNames = new[]
             {
@@ -231,11 +267,13 @@ namespace UnityExplorerMCP.Tools
                         continue;
 
                     if (
-                        !string.IsNullOrEmpty(nameFilter)
+                        !string.IsNullOrEmpty(args.NameFilter)
                         && (
                             type.FullName == null
-                            || type.FullName.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase)
-                                < 0
+                            || type.FullName.IndexOf(
+                                args.NameFilter,
+                                StringComparison.OrdinalIgnoreCase
+                            ) < 0
                         )
                     )
                         continue;

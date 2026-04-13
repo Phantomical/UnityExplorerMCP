@@ -11,57 +11,72 @@ namespace UnityExplorerMCP.Tools
         public ComponentTools(ObjectRegistry.ObjectRegistry registry, ToolRegistry tools)
             : base(registry, tools) { }
 
+        #region Parameter Types
+
+        public struct ListComponentsParams
+        {
+            [McpParam("Handle of the GameObject", Required = true)]
+            public string ObjectHandle { get; set; }
+        }
+
+        public struct ToggleComponentParams
+        {
+            [McpParam("Handle of the Component", Required = true)]
+            public string ObjectHandle { get; set; }
+
+            [McpParam("Desired enabled state", Required = true)]
+            public bool Enabled { get; set; }
+        }
+
+        public struct AddComponentParams
+        {
+            [McpParam("Handle of the target GameObject", Required = true)]
+            public string ObjectHandle { get; set; }
+
+            [McpParam("Full or short name of the component type", Required = true)]
+            public string TypeName { get; set; }
+        }
+
+        public struct RemoveComponentParams
+        {
+            [McpParam("Handle of the Component to destroy", Required = true)]
+            public string ObjectHandle { get; set; }
+        }
+
+        #endregion
+
         public override void Register()
         {
-            Tools.Register(
+            Tools.Register<ListComponentsParams>(
                 "list_components",
                 "List all components on a GameObject with type info, enabled state, and assembly info.",
-                @"{
-                    ""objectHandle"": { ""type"": ""string"", ""description"": ""Handle of the GameObject"" }
-                }",
-                new[] { "objectHandle" },
                 ListComponents
             );
 
-            Tools.Register(
+            Tools.Register<ToggleComponentParams>(
                 "toggle_component",
                 "Enable or disable a Behaviour component.",
-                @"{
-                    ""objectHandle"": { ""type"": ""string"", ""description"": ""Handle of the Component"" },
-                    ""enabled"":      { ""type"": ""boolean"", ""description"": ""Desired enabled state"" }
-                }",
-                new[] { "objectHandle", "enabled" },
                 ToggleComponent
             );
 
-            Tools.Register(
+            Tools.Register<AddComponentParams>(
                 "add_component",
                 "Add a new component to a GameObject by type name.",
-                @"{
-                    ""objectHandle"": { ""type"": ""string"", ""description"": ""Handle of the target GameObject"" },
-                    ""typeName"":     { ""type"": ""string"", ""description"": ""Full or short name of the component type"" }
-                }",
-                new[] { "objectHandle", "typeName" },
                 AddComponent
             );
 
-            Tools.Register(
+            Tools.Register<RemoveComponentParams>(
                 "remove_component",
                 "Destroy a component. Cannot destroy the Transform component.",
-                @"{
-                    ""objectHandle"": { ""type"": ""string"", ""description"": ""Handle of the Component to destroy"" }
-                }",
-                new[] { "objectHandle" },
                 RemoveComponent
             );
         }
 
-        McpProtocol.ToolCallResult ListComponents(JsonObject args)
+        McpProtocol.ToolCallResult ListComponents(ListComponentsParams args)
         {
-            string handle = GetString(args, "objectHandle");
-            var go = ResolveGameObject(handle);
+            var go = ResolveGameObject(args.ObjectHandle);
             if (go == null)
-                return HandleNotFound(handle);
+                return HandleNotFound(args.ObjectHandle);
 
             var components = new JsonArray();
             foreach (var comp in go.GetComponents<Component>())
@@ -89,30 +104,27 @@ namespace UnityExplorerMCP.Tools
             return McpProtocol.ToolSuccess(
                 new JsonObject
                 {
-                    ["gameObjectHandle"] = handle,
+                    ["gameObjectHandle"] = args.ObjectHandle,
                     ["gameObjectName"] = go.name,
                     ["components"] = components,
                 }
             );
         }
 
-        McpProtocol.ToolCallResult ToggleComponent(JsonObject args)
+        McpProtocol.ToolCallResult ToggleComponent(ToggleComponentParams args)
         {
-            string handle = GetString(args, "objectHandle");
-            bool enabled = GetBool(args, "enabled");
-
-            var comp = Registry.Resolve<Component>(handle);
+            var comp = Registry.Resolve<Component>(args.ObjectHandle);
             if (comp == null)
-                return HandleNotFound(handle);
+                return HandleNotFound(args.ObjectHandle);
 
             if (comp is Behaviour behaviour)
             {
-                behaviour.enabled = enabled;
+                behaviour.enabled = args.Enabled;
                 return McpProtocol.ToolSuccess(
                     new JsonObject
                     {
                         ["success"] = true,
-                        ["objectHandle"] = handle,
+                        ["objectHandle"] = args.ObjectHandle,
                         ["typeName"] = comp.GetType().Name,
                         ["enabled"] = behaviour.enabled,
                     }
@@ -124,18 +136,15 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult AddComponent(JsonObject args)
+        McpProtocol.ToolCallResult AddComponent(AddComponentParams args)
         {
-            string handle = GetString(args, "objectHandle");
-            string typeName = GetString(args, "typeName");
-
-            var go = ResolveGameObject(handle);
+            var go = ResolveGameObject(args.ObjectHandle);
             if (go == null)
-                return HandleNotFound(handle);
+                return HandleNotFound(args.ObjectHandle);
 
-            Type type = TypeResolver.FindType(typeName);
+            Type type = TypeResolver.FindType(args.TypeName);
             if (type == null)
-                return McpProtocol.ToolError($"Could not find type: {typeName}");
+                return McpProtocol.ToolError($"Could not find type: {args.TypeName}");
 
             if (!typeof(Component).IsAssignableFrom(type))
                 return McpProtocol.ToolError(
@@ -150,20 +159,18 @@ namespace UnityExplorerMCP.Tools
                 new JsonObject
                 {
                     ["success"] = true,
-                    ["objectHandle"] = handle,
+                    ["objectHandle"] = args.ObjectHandle,
                     ["newComponentHandle"] = Registry.Register(newComp),
                     ["typeName"] = type.FullName,
                 }
             );
         }
 
-        McpProtocol.ToolCallResult RemoveComponent(JsonObject args)
+        McpProtocol.ToolCallResult RemoveComponent(RemoveComponentParams args)
         {
-            string handle = GetString(args, "objectHandle");
-
-            var comp = Registry.Resolve<Component>(handle);
+            var comp = Registry.Resolve<Component>(args.ObjectHandle);
             if (comp == null)
-                return HandleNotFound(handle);
+                return HandleNotFound(args.ObjectHandle);
 
             if (comp is Transform)
                 return McpProtocol.ToolError("Cannot destroy the Transform component.");

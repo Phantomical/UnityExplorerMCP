@@ -28,19 +28,32 @@ namespace UnityExplorerMCP.Tools
             _tools = tools;
         }
 
+        #region Parameter Types
+
+        public struct GetLogsParams
+        {
+            [McpParam("Number of most recent log entries (default 50, max 500)")]
+            public int? Count { get; set; }
+
+            [McpParam(
+                "Filter by log type. Default: all.",
+                EnumValues = new[] { "log", "warning", "error", "exception", "assert" }
+            )]
+            public string LogType { get; set; }
+
+            [McpParam("Only return logs after this Time.realtimeSinceStartup value.")]
+            public float? SinceTimestamp { get; set; }
+        }
+
+        #endregion
+
         public void Register()
         {
             StartListening();
 
-            _tools.Register(
+            _tools.Register<GetLogsParams>(
                 "get_logs",
                 "Get recent Unity debug log messages. The server captures logs via Application.logMessageReceived into a ring buffer.",
-                @"{
-                    ""count"":          { ""type"": ""integer"", ""description"": ""Number of most recent log entries (default 50, max 500)"" },
-                    ""logType"":        { ""type"": ""string"", ""enum"": [""log"",""warning"",""error"",""exception"",""assert""], ""description"": ""Filter by log type. Default: all."" },
-                    ""sinceTimestamp"":  { ""type"": ""number"", ""description"": ""Only return logs after this Time.realtimeSinceStartup value."" }
-                }",
-                null,
                 GetLogs
             );
         }
@@ -73,22 +86,21 @@ namespace UnityExplorerMCP.Tools
             }
         }
 
-        McpProtocol.ToolCallResult GetLogs(JsonObject args)
+        McpProtocol.ToolCallResult GetLogs(GetLogsParams args)
         {
-            int count = Math.Min(GetInt(args, "count", 50), 500);
-            string logTypeFilter = GetString(args, "logType");
-            float sinceTimestamp = args?["sinceTimestamp"]?.GetValue<float>() ?? 0;
+            int count = Math.Min(args.Count ?? 50, 500);
+            float sinceTimestamp = args.SinceTimestamp ?? 0;
 
             LogType? typeFilter = null;
-            if (!string.IsNullOrEmpty(logTypeFilter))
+            if (!string.IsNullOrEmpty(args.LogType))
             {
-                typeFilter = logTypeFilter.ToLowerInvariant() switch
+                typeFilter = args.LogType.ToLowerInvariant() switch
                 {
-                    "log" => LogType.Log,
-                    "warning" => LogType.Warning,
-                    "error" => LogType.Error,
-                    "exception" => LogType.Exception,
-                    "assert" => LogType.Assert,
+                    "log" => UnityEngine.LogType.Log,
+                    "warning" => UnityEngine.LogType.Warning,
+                    "error" => UnityEngine.LogType.Error,
+                    "exception" => UnityEngine.LogType.Exception,
+                    "assert" => UnityEngine.LogType.Assert,
                     _ => null,
                 };
             }
@@ -135,18 +147,6 @@ namespace UnityExplorerMCP.Tools
                     ["oldestTimestamp"] = oldestTimestamp,
                 }
             );
-        }
-
-        static int GetInt(JsonObject args, string key, int defaultValue = 0)
-        {
-            var node = args?[key];
-            return node != null ? node.GetValue<int>() : defaultValue;
-        }
-
-        static string GetString(JsonObject args, string key, string defaultValue = null)
-        {
-            var node = args?[key];
-            return node != null ? node.GetValue<string>() : defaultValue;
         }
     }
 }

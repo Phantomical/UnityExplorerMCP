@@ -12,63 +12,86 @@ namespace UnityExplorerMCP.Tools
         public SceneTools(ObjectRegistry.ObjectRegistry registry, ToolRegistry tools)
             : base(registry, tools) { }
 
+        #region Parameter Types
+
+        public struct GetRootObjectsParams
+        {
+            [McpParam(
+                "Scene handle from list_scenes. Use -12 for DontDestroyOnLoad, -1 for HideAndDontSave.",
+                Required = true
+            )]
+            public int SceneHandle { get; set; }
+
+            [McpParam("Max results (default 50)")]
+            public int? Limit { get; set; }
+
+            [McpParam("Skip first N results (default 0)")]
+            public int? Offset { get; set; }
+        }
+
+        public struct GetChildrenParams
+        {
+            [McpParam("Handle of the parent GameObject", Required = true)]
+            public string ObjectHandle { get; set; }
+
+            [McpParam("Max results (default 50)")]
+            public int? Limit { get; set; }
+
+            [McpParam("Skip first N results (default 0)")]
+            public int? Offset { get; set; }
+        }
+
+        public struct FindByPathParams
+        {
+            [McpParam("Hierarchy path, slash-separated. Leading / is optional.", Required = true)]
+            public string Path { get; set; }
+
+            [McpParam("Limit search to a specific scene (optional).")]
+            public int? SceneHandle { get; set; }
+        }
+
+        public struct GetHierarchyPathParams
+        {
+            [McpParam("Handle of the GameObject", Required = true)]
+            public string ObjectHandle { get; set; }
+        }
+
+        #endregion
+
         public override void Register()
         {
             Tools.Register(
                 "list_scenes",
                 "List all currently loaded Unity scenes, including DontDestroyOnLoad and HideAndDontSave pseudo-scenes.",
-                "{}",
-                null,
                 ListScenes
             );
 
-            Tools.Register(
+            Tools.Register<GetRootObjectsParams>(
                 "get_root_objects",
                 "Get the root GameObjects of a scene.",
-                @"{
-                    ""sceneHandle"": { ""type"": ""integer"", ""description"": ""Scene handle from list_scenes. Use -12 for DontDestroyOnLoad, -1 for HideAndDontSave."" },
-                    ""limit"":  { ""type"": ""integer"", ""description"": ""Max results (default 50)"" },
-                    ""offset"": { ""type"": ""integer"", ""description"": ""Skip first N results (default 0)"" }
-                }",
-                new[] { "sceneHandle" },
                 GetRootObjects
             );
 
-            Tools.Register(
+            Tools.Register<GetChildrenParams>(
                 "get_children",
                 "Get the immediate children of a GameObject.",
-                @"{
-                    ""objectHandle"": { ""type"": ""string"", ""description"": ""Handle of the parent GameObject"" },
-                    ""limit"":  { ""type"": ""integer"", ""description"": ""Max results (default 50)"" },
-                    ""offset"": { ""type"": ""integer"", ""description"": ""Skip first N results (default 0)"" }
-                }",
-                new[] { "objectHandle" },
                 GetChildren
             );
 
-            Tools.Register(
+            Tools.Register<FindByPathParams>(
                 "find_by_path",
                 "Find a GameObject by its hierarchy path (e.g. '/Sun/Sunlight'). Searches active and inactive objects.",
-                @"{
-                    ""path"": { ""type"": ""string"", ""description"": ""Hierarchy path, slash-separated. Leading / is optional."" },
-                    ""sceneHandle"": { ""type"": ""integer"", ""description"": ""Limit search to a specific scene (optional)."" }
-                }",
-                new[] { "path" },
                 FindByPath
             );
 
-            Tools.Register(
+            Tools.Register<GetHierarchyPathParams>(
                 "get_hierarchy_path",
                 "Get the full hierarchy path of a GameObject from the scene root, including ancestor chain.",
-                @"{
-                    ""objectHandle"": { ""type"": ""string"", ""description"": ""Handle of the GameObject"" }
-                }",
-                new[] { "objectHandle" },
                 GetHierarchyPath
             );
         }
 
-        McpProtocol.ToolCallResult ListScenes(JsonObject args)
+        McpProtocol.ToolCallResult ListScenes()
         {
             var scenes = new JsonArray();
 
@@ -128,14 +151,13 @@ namespace UnityExplorerMCP.Tools
             return McpProtocol.ToolSuccess(new JsonObject { ["scenes"] = scenes });
         }
 
-        McpProtocol.ToolCallResult GetRootObjects(JsonObject args)
+        McpProtocol.ToolCallResult GetRootObjects(GetRootObjectsParams args)
         {
-            int sceneHandle = GetInt(args, "sceneHandle");
-            int limit = GetInt(args, "limit", 50);
-            int offset = GetInt(args, "offset", 0);
+            int limit = args.Limit ?? 50;
+            int offset = args.Offset ?? 0;
 
-            GameObject[] roots = GetRootObjectsForScene(sceneHandle);
-            string sceneName = GetSceneName(sceneHandle);
+            GameObject[] roots = GetRootObjectsForScene(args.SceneHandle);
+            string sceneName = GetSceneName(args.SceneHandle);
 
             var objects = new JsonArray();
             for (int i = offset; i < roots.Length && i < offset + limit; i++)
@@ -149,7 +171,7 @@ namespace UnityExplorerMCP.Tools
             return McpProtocol.ToolSuccess(
                 new JsonObject
                 {
-                    ["sceneHandle"] = sceneHandle,
+                    ["sceneHandle"] = args.SceneHandle,
                     ["sceneName"] = sceneName,
                     ["totalCount"] = roots.Length,
                     ["objects"] = objects,
@@ -157,22 +179,20 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult GetChildren(JsonObject args)
+        McpProtocol.ToolCallResult GetChildren(GetChildrenParams args)
         {
-            string handle = GetString(args, "objectHandle");
-            int limit = GetInt(args, "limit", 50);
-            int offset = GetInt(args, "offset", 0);
+            int limit = args.Limit ?? 50;
+            int offset = args.Offset ?? 0;
 
-            var go = Registry.Resolve<GameObject>(handle);
+            var go = Registry.Resolve<GameObject>(args.ObjectHandle);
             if (go == null)
             {
-                // Maybe it's a component — get its gameObject
-                var comp = Registry.Resolve<Component>(handle);
+                var comp = Registry.Resolve<Component>(args.ObjectHandle);
                 if (comp != null)
                     go = comp.gameObject;
             }
             if (go == null)
-                return HandleNotFound(handle);
+                return HandleNotFound(args.ObjectHandle);
 
             var transform = go.transform;
             int totalCount = transform.childCount;
@@ -201,7 +221,7 @@ namespace UnityExplorerMCP.Tools
             return McpProtocol.ToolSuccess(
                 new JsonObject
                 {
-                    ["parentHandle"] = handle,
+                    ["parentHandle"] = args.ObjectHandle,
                     ["parentName"] = go.name,
                     ["totalCount"] = totalCount,
                     ["children"] = children,
@@ -209,24 +229,19 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult FindByPath(JsonObject args)
+        McpProtocol.ToolCallResult FindByPath(FindByPathParams args)
         {
-            string path = GetString(args, "path");
-            int? sceneHandle = HasKey(args, "sceneHandle")
-                ? GetInt(args, "sceneHandle")
-                : (int?)null;
-
-            if (string.IsNullOrEmpty(path))
+            if (string.IsNullOrEmpty(args.Path))
                 return McpProtocol.ToolError("Path is required");
 
             // Normalize path
-            path = path.TrimStart('/');
+            string path = args.Path.TrimStart('/');
             string[] parts = path.Split('/');
 
             List<GameObject[]> rootSets = new();
-            if (sceneHandle.HasValue)
+            if (args.SceneHandle.HasValue)
             {
-                rootSets.Add(GetRootObjectsForScene(sceneHandle.Value));
+                rootSets.Add(GetRootObjectsForScene(args.SceneHandle.Value));
             }
             else
             {
@@ -292,12 +307,11 @@ namespace UnityExplorerMCP.Tools
             );
         }
 
-        McpProtocol.ToolCallResult GetHierarchyPath(JsonObject args)
+        McpProtocol.ToolCallResult GetHierarchyPath(GetHierarchyPathParams args)
         {
-            string handle = GetString(args, "objectHandle");
-            var go = Registry.Resolve<GameObject>(handle);
+            var go = Registry.Resolve<GameObject>(args.ObjectHandle);
             if (go == null)
-                return HandleNotFound(handle);
+                return HandleNotFound(args.ObjectHandle);
 
             var ancestors = new JsonArray();
             Transform t = go.transform.parent;
@@ -325,7 +339,7 @@ namespace UnityExplorerMCP.Tools
             return McpProtocol.ToolSuccess(
                 new JsonObject
                 {
-                    ["objectHandle"] = handle,
+                    ["objectHandle"] = args.ObjectHandle,
                     ["path"] = GetFullPath(go.transform),
                     ["sceneName"] = go.scene.IsValid() ? go.scene.name : "DontDestroyOnLoad",
                     ["depth"] = depth,
@@ -411,7 +425,6 @@ namespace UnityExplorerMCP.Tools
         {
             try
             {
-                // Create a temporary object in DontDestroyOnLoad to test if the scene exists
                 var temp = new GameObject("__McpDdolCheck__");
                 Object.DontDestroyOnLoad(temp);
                 bool exists = temp.scene.IsValid();
@@ -426,7 +439,6 @@ namespace UnityExplorerMCP.Tools
 
         static GameObject[] GetHideAndDontSaveObjects()
         {
-            // Find all root GameObjects that aren't in any valid scene
             var allGOs = Resources.FindObjectsOfTypeAll<GameObject>();
             return allGOs
                 .Where(g =>
