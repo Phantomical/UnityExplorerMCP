@@ -58,6 +58,7 @@ namespace UnityExplorerMCP
             new ConsoleTools(_tools).Register();
             new LogTools(_tools).Register();
             new RaycastTools(_registry, _tools).Register();
+            new ScreenshotTools(_tools).Register();
         }
 
         static int ReadPort()

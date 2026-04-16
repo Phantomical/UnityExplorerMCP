@@ -190,7 +190,31 @@ namespace UnityExplorerMCP.Server
                 return;
             }
 
-            // Dispatch tool execution to the main thread
+            if (_tools.IsCoroutine(callParams.Name))
+            {
+                // Coroutine tool: dispatch to main thread without blocking.
+                // The coroutine runs over multiple frames and delivers its result via callback.
+                var args = callParams.Arguments ?? new JsonObject();
+                MainThreadDispatcher.Instance.Enqueue(() =>
+                {
+                    var coroutine = _tools.InvokeCoroutine(
+                        callParams.Name,
+                        args,
+                        toolResult =>
+                        {
+                            var json = JsonSerializer.Serialize(
+                                McpProtocol.Success(request.Id, toolResult),
+                                SerializerOptions
+                            );
+                            EnqueueRaw(json);
+                        }
+                    );
+                    MainThreadDispatcher.Instance.StartCoroutine(coroutine);
+                });
+                return;
+            }
+
+            // Synchronous tool: dispatch to main thread and block until complete
             var result = MainThreadDispatcher.Instance.EnqueueAndWait(() =>
             {
                 var toolResult = _tools.Invoke(
