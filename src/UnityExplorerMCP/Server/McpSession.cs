@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
@@ -194,21 +195,27 @@ namespace UnityExplorerMCP.Server
             {
                 // Coroutine tool: dispatch to main thread without blocking.
                 // The coroutine runs over multiple frames and delivers its result via callback.
+                // Note: SessionContext.Current is only set for the initial MoveNext; coroutine
+                // tools that need session identity must capture it themselves before yielding.
                 var args = callParams.Arguments ?? new JsonObject();
                 MainThreadDispatcher.Instance.Enqueue(() =>
                 {
-                    var coroutine = _tools.InvokeCoroutine(
-                        callParams.Name,
-                        args,
-                        toolResult =>
-                        {
-                            var json = JsonSerializer.Serialize(
-                                McpProtocol.Success(request.Id, toolResult),
-                                SerializerOptions
-                            );
-                            EnqueueRaw(json);
-                        }
-                    );
+                    IEnumerator coroutine;
+                    using (SessionContext.Enter(Id))
+                    {
+                        coroutine = _tools.InvokeCoroutine(
+                            callParams.Name,
+                            args,
+                            toolResult =>
+                            {
+                                var json = JsonSerializer.Serialize(
+                                    McpProtocol.Success(request.Id, toolResult),
+                                    SerializerOptions
+                                );
+                                EnqueueRaw(json);
+                            }
+                        );
+                    }
                     MainThreadDispatcher.Instance.StartCoroutine(coroutine);
                 });
                 return;
@@ -217,14 +224,17 @@ namespace UnityExplorerMCP.Server
             // Synchronous tool: dispatch to main thread and block until complete
             var result = MainThreadDispatcher.Instance.EnqueueAndWait(() =>
             {
-                var toolResult = _tools.Invoke(
-                    callParams.Name,
-                    callParams.Arguments ?? new JsonObject()
-                );
-                return JsonSerializer.Serialize(
-                    McpProtocol.Success(request.Id, toolResult),
-                    SerializerOptions
-                );
+                using (SessionContext.Enter(Id))
+                {
+                    var toolResult = _tools.Invoke(
+                        callParams.Name,
+                        callParams.Arguments ?? new JsonObject()
+                    );
+                    return JsonSerializer.Serialize(
+                        McpProtocol.Success(request.Id, toolResult),
+                        SerializerOptions
+                    );
+                }
             });
 
             // Result is already serialized JSON — send directly
@@ -283,6 +293,14 @@ namespace UnityExplorerMCP.Server
                 _sseResponse?.Close();
             }
             catch { }
+            try
+            {
+                SessionContext.RaiseClosed(Id);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[UnityExplorerMCP] SessionContext.Closed handler threw: {ex}");
+            }
         }
     }
 }
