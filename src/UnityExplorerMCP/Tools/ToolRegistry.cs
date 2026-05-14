@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using UnityExplorerMCP.Server;
 
 namespace UnityExplorerMCP.Tools
@@ -23,6 +24,7 @@ namespace UnityExplorerMCP.Tools
         static readonly JsonSerializerOptions DeserializeOptions = new()
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         };
 
         /// <summary>

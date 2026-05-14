@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 
 namespace UnityExplorerMCP.Serialization
@@ -70,57 +69,51 @@ namespace UnityExplorerMCP.Serialization
         }
 
         /// <summary>
-        /// Search for types matching a name filter across all assemblies.
+        /// Search for types matching a name filter and return both the total match count
+        /// and the requested page in a single pass over all assemblies.
         /// </summary>
-        public static List<Type> SearchTypes(string nameFilter, int limit = 25, int offset = 0)
+        public static (int TotalCount, List<Type> Page) SearchTypesPaged(
+            string nameFilter,
+            int limit = 25,
+            int offset = 0
+        )
         {
-            var results = new List<Type>();
-            string filter = nameFilter?.ToLowerInvariant() ?? "";
-
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
-                {
-                    foreach (var type in asm.GetTypes())
-                    {
-                        if (
-                            string.IsNullOrEmpty(filter)
-                            || type.FullName?.ToLowerInvariant().Contains(filter) == true
-                        )
-                            results.Add(type);
-                    }
-                }
-                catch { }
-            }
-
-            return results.Skip(offset).Take(limit).ToList();
-        }
-
-        /// <summary>
-        /// Get the count of types matching a filter.
-        /// </summary>
-        public static int CountTypes(string nameFilter)
-        {
-            string filter = nameFilter?.ToLowerInvariant() ?? "";
+            string filter = nameFilter ?? "";
+            bool hasFilter = filter.Length > 0;
             int count = 0;
+            var page = new List<Type>(Math.Min(limit, 64));
 
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
             {
+                Type[] types;
                 try
                 {
-                    foreach (var type in asm.GetTypes())
-                    {
-                        if (
-                            string.IsNullOrEmpty(filter)
-                            || type.FullName?.ToLowerInvariant().Contains(filter) == true
-                        )
-                            count++;
-                    }
+                    types = asm.GetTypes();
                 }
-                catch { }
+                catch
+                {
+                    continue;
+                }
+
+                foreach (var type in types)
+                {
+                    if (hasFilter)
+                    {
+                        var name = type.FullName;
+                        if (
+                            name == null
+                            || name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0
+                        )
+                            continue;
+                    }
+
+                    if (count >= offset && page.Count < limit)
+                        page.Add(type);
+                    count++;
+                }
             }
 
-            return count;
+            return (count, page);
         }
 
         public static void ClearCache() => _typeCache.Clear();

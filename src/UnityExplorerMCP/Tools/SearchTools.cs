@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using System.Text.Json.Nodes;
 using UnityEngine;
@@ -118,49 +117,59 @@ namespace UnityExplorerMCP.Tools
             }
 
             var allObjects = Resources.FindObjectsOfTypeAll(searchType);
-            var results = new List<JsonObject>();
             bool shouldFilterGOs =
                 searchType == typeof(GameObject) || typeof(Component).IsAssignableFrom(searchType);
 
+            // First pass: collect references for everything that passes the filters.
+            // The expensive per-match work (Register / GetFullPath / JsonObject) is deferred
+            // to the page slice below so that large match sets don't blow up the call.
+            var matches = new List<UnityEngine.Object>();
             foreach (var obj in allObjects)
             {
                 if (obj == null)
                     continue;
 
-                // Name filter
                 if (
                     !string.IsNullOrEmpty(args.NameFilter)
                     && obj.name.IndexOf(args.NameFilter, StringComparison.OrdinalIgnoreCase) < 0
                 )
                     continue;
 
-                GameObject go = null;
-                if (obj is GameObject goObj)
-                    go = goObj;
-                else if (obj is Component comp)
-                    go = comp.gameObject;
-
-                if (go != null && shouldFilterGOs)
+                if (shouldFilterGOs)
                 {
-                    // Skip UnityExplorer/UniverseLib UI objects
-                    if (go.transform.root.name == "UniverseLibCanvas")
-                        continue;
+                    GameObject go = obj as GameObject ?? (obj as Component)?.gameObject;
+                    if (go != null)
+                    {
+                        // Skip UnityExplorer/UniverseLib UI objects
+                        if (go.transform.root.name == "UniverseLibCanvas")
+                            continue;
 
-                    // Scene filter
-                    if (sceneFilter != "any" && !MatchesSceneFilter(go.scene, sceneFilter))
-                        continue;
+                        if (sceneFilter != "any" && !MatchesSceneFilter(go.scene, sceneFilter))
+                            continue;
 
-                    // Child filter
-                    if (childFilter == "rootObject" && go.transform.parent != null)
-                        continue;
-                    if (childFilter == "hasParent" && go.transform.parent == null)
-                        continue;
+                        if (childFilter == "rootObject" && go.transform.parent != null)
+                            continue;
+                        if (childFilter == "hasParent" && go.transform.parent == null)
+                            continue;
+                    }
                 }
+
+                matches.Add(obj);
+            }
+
+            int totalCount = matches.Count;
+            int start = Math.Min(offset, totalCount);
+            int end = Math.Min(offset + limit, totalCount);
+
+            var results = new JsonArray();
+            for (int i = start; i < end; i++)
+            {
+                var obj = matches[i];
+                GameObject go = obj as GameObject ?? (obj as Component)?.gameObject;
 
                 string path = null;
                 string sceneName = null;
                 bool? activeSelf = null;
-
                 if (go != null)
                 {
                     path = GetFullPath(go.transform);
@@ -182,15 +191,8 @@ namespace UnityExplorerMCP.Tools
                 );
             }
 
-            int totalCount = results.Count;
-            var paged = results.Skip(offset).Take(limit).ToList();
-
             return McpProtocol.ToolSuccess(
-                new JsonObject
-                {
-                    ["totalCount"] = totalCount,
-                    ["results"] = new JsonArray(paged.ToArray()),
-                }
+                new JsonObject { ["totalCount"] = totalCount, ["results"] = results }
             );
         }
 
@@ -199,8 +201,11 @@ namespace UnityExplorerMCP.Tools
             int limit = args.Limit ?? 25;
             int offset = args.Offset ?? 0;
 
-            int totalCount = TypeResolver.CountTypes(args.NameFilter);
-            var types = TypeResolver.SearchTypes(args.NameFilter, limit, offset);
+            var (totalCount, types) = TypeResolver.SearchTypesPaged(
+                args.NameFilter,
+                limit,
+                offset
+            );
 
             var results = new JsonArray();
             foreach (var type in types)
@@ -244,9 +249,12 @@ namespace UnityExplorerMCP.Tools
                 "<instance>k__BackingField",
             };
 
-            var results = new List<JsonObject>();
             const BindingFlags flags =
                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+
+            // First pass: collect (type, fieldName, value) for every singleton match.
+            // Defer RegisterManaged / TrySafeToString / JsonObject to the page slice below.
+            var matches = new List<(Type Type, string FieldName, object Value)>();
 
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -290,16 +298,7 @@ namespace UnityExplorerMCP.Tools
                             if (value == null)
                                 continue;
 
-                            results.Add(
-                                new JsonObject
-                                {
-                                    ["objectHandle"] = Registry.RegisterManaged(value),
-                                    ["typeName"] = type.Name,
-                                    ["typeFullName"] = type.FullName,
-                                    ["fieldName"] = fieldName,
-                                    ["toString"] = TrySafeToString(value),
-                                }
-                            );
+                            matches.Add((type, fieldName, value));
                             break; // Found singleton for this type, move on
                         }
                         catch { }
@@ -307,15 +306,28 @@ namespace UnityExplorerMCP.Tools
                 }
             }
 
-            int totalCount = results.Count;
-            var paged = results.Skip(offset).Take(limit).ToList();
+            int totalCount = matches.Count;
+            int start = Math.Min(offset, totalCount);
+            int end = Math.Min(offset + limit, totalCount);
+
+            var results = new JsonArray();
+            for (int i = start; i < end; i++)
+            {
+                var match = matches[i];
+                results.Add(
+                    new JsonObject
+                    {
+                        ["objectHandle"] = Registry.RegisterManaged(match.Value),
+                        ["typeName"] = match.Type.Name,
+                        ["typeFullName"] = match.Type.FullName,
+                        ["fieldName"] = match.FieldName,
+                        ["toString"] = TrySafeToString(match.Value),
+                    }
+                );
+            }
 
             return McpProtocol.ToolSuccess(
-                new JsonObject
-                {
-                    ["totalCount"] = totalCount,
-                    ["singletons"] = new JsonArray(paged.ToArray()),
-                }
+                new JsonObject { ["totalCount"] = totalCount, ["singletons"] = results }
             );
         }
 

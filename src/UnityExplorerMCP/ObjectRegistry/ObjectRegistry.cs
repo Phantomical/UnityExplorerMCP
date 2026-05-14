@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 namespace UnityExplorerMCP.ObjectRegistry
@@ -116,21 +115,30 @@ namespace UnityExplorerMCP.ObjectRegistry
             Cleanup();
         }
 
+        readonly List<int> _deadUnityScratch = new();
+        readonly List<long> _deadManagedScratch = new();
+
         public void Cleanup()
         {
-            var deadUnity = _unityObjects
-                .Where(kv => !kv.Value.TryGetTarget(out var obj) || obj == null)
-                .Select(kv => kv.Key)
-                .ToList();
-            foreach (var key in deadUnity)
+            _deadUnityScratch.Clear();
+            foreach (var kv in _unityObjects)
+            {
+                if (!kv.Value.TryGetTarget(out var obj) || obj == null)
+                    _deadUnityScratch.Add(kv.Key);
+            }
+            foreach (var key in _deadUnityScratch)
                 _unityObjects.Remove(key);
+            _deadUnityScratch.Clear();
 
-            var deadManaged = _managedObjects
-                .Where(kv => !kv.Value.IsAlive || kv.Value.Target == null)
-                .Select(kv => kv.Key)
-                .ToList();
-            foreach (var key in deadManaged)
+            _deadManagedScratch.Clear();
+            foreach (var kv in _managedObjects)
+            {
+                if (!kv.Value.IsAlive || kv.Value.Target == null)
+                    _deadManagedScratch.Add(kv.Key);
+            }
+            foreach (var key in _deadManagedScratch)
                 _managedObjects.Remove(key);
+            _deadManagedScratch.Clear();
         }
     }
 }
