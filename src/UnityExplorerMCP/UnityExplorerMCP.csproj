@@ -1,13 +1,31 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Description>MCP server integration for UnityExplorer in KSP</Description>
+    <AssemblyName>UnityExplorerMCP</AssemblyName>
+    <RootNamespace>UnityExplorerMCP</RootNamespace>
+    <TargetFramework>net462</TargetFramework>
 
-    <KSPBT_ModRoot>$(GameDataOutDir)</KSPBT_ModRoot>
+    <Description>MCP server integration for UnityExplorer in KSP</Description>
+    <Product>UnityExplorerMCP</Product>
+
+    <KSPBT_ModRoot>$(ProjectRootDir)GameData\UnityExplorerMCP</KSPBT_ModRoot>
     <KSPBT_ModPluginFolder>Plugins</KSPBT_ModPluginFolder>
+
+    <LangVersion>preview</LangVersion>
+    <DebugType>portable</DebugType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>CS1591</NoWarn>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <Configurations>Debug;Release;Profiling</Configurations>
+    <DefineConstants Condition="'$(Configuration)'=='Profiling'">$(DefineConstants);ENABLE_PROFILER</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(KSPBT_ModVersion)' != '' ">
+    <Version>$(KSPBT_ModVersion)</Version>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="KSPBuildTools" Version="1.1.0" />
+    <PackageReference Include="KSPBuildTools" Version="1.1.1" />
     <PackageReference Include="System.Text.Json" Version="10.0.5" />
     <PackageReference Include="System.ValueTuple" Version="4.6.1" />
 
@@ -21,21 +39,14 @@
     <Publicize Include="Assembly-CSharp" />
   </ItemGroup>
 
-  <!--
-    It's really easy for old binaries to stick around in GameData and bin
-    directories. This step makes sure that doesn't happen.
-  -->
+  <ItemGroup Condition="'$(Configuration)' == 'Debug' Or '$(Configuration)' == 'Profiling'">
+    <AssemblyMetadata Include="HotReload" Value="true" />
+  </ItemGroup>
+
   <Target Name="GameDataPostClean" AfterTargets="Clean">
-    <!--
-      Make sure to delete the output mod directory on clean so we don't have
-      outdated artifacts lying around.
-    -->
-    <RemoveDir Directories="$(GameDataOutDir)" />
-    <!--
-      KSP gets borked if there are invalid junctions in GameData. We fix this
-      by recreating the directory after we delete it.
-    -->
-    <MakeDir Directories="$(GameDataOutDir)" />
+    <RemoveDir Directories="$(KSPBT_ModRoot)" />
+    <!-- KSP gets borked if there are invalid junctions in GameData, so recreate it. -->
+    <MakeDir Directories="$(KSPBT_ModRoot)" />
   </Target>
 
   <Target Name="CopyExtrasToPluginFolder" AfterTargets="KSPBT_CopyDLLsToPluginFolder">
