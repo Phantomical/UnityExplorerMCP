@@ -15,9 +15,9 @@ namespace UnityExplorerMCP.Tools
         sealed class EvaluatorState
         {
             public object Evaluator;
-            public MethodInfo EvaluateMethod;   // Evaluate(string)
-            public MethodInfo EvaluateMethod3;  // Evaluate(string, out object, out bool)
-            public MethodInfo RunMethod;        // Run(string)
+            public MethodInfo EvaluateMethod; // Evaluate(string)
+            public MethodInfo EvaluateMethod3; // Evaluate(string, out object, out bool)
+            public MethodInfo RunMethod; // Run(string)
             public StringBuilder Output;
             public TextWriter Writer;
             public string InitError;
@@ -195,9 +195,7 @@ namespace UnityExplorerMCP.Tools
             {
                 var state = ResetState(key);
                 if (state.Evaluator == null)
-                    return McpProtocol.ToolError(
-                        $"Failed to reset evaluator: {state.InitError}"
-                    );
+                    return McpProtocol.ToolError($"Failed to reset evaluator: {state.InitError}");
                 return McpProtocol.ToolSuccess(new JsonObject { ["success"] = true });
             }
             catch (Exception ex)
@@ -298,6 +296,16 @@ namespace UnityExplorerMCP.Tools
                 var context = Activator.CreateInstance(contextType, settings, reporter);
 
                 state.Evaluator = Activator.CreateInstance(_evaluatorType, context);
+
+                // Mono.CSharp's default InteractiveBaseClass is Mono.CSharp.InteractiveBase.
+                // When mcs.dll is merged into another assembly with ILRepack's `internalize`
+                // option (as UnityExplorerKSP does), InteractiveBase becomes internal. The
+                // evaluator generates the wrapper `<InteractiveExpressionClass N>` as public,
+                // which then fails to compile with CS0060 "Inconsistent accessibility". Point
+                // it at a known-public type so the wrapper's base is always visible.
+                var baseClassProp = _evaluatorType.GetProperty("InteractiveBaseClass");
+                if (baseClassProp != null)
+                    baseClassProp.SetValue(state.Evaluator, typeof(object), null);
 
                 state.EvaluateMethod = _evaluatorType.GetMethod(
                     "Evaluate",
