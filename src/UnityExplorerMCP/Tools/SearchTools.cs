@@ -201,11 +201,7 @@ namespace UnityExplorerMCP.Tools
             int limit = args.Limit ?? 25;
             int offset = args.Offset ?? 0;
 
-            var (totalCount, types) = TypeResolver.SearchTypesPaged(
-                args.NameFilter,
-                limit,
-                offset
-            );
+            var (totalCount, types) = TypeResolver.SearchTypesPaged(args.NameFilter, limit, offset);
 
             var results = new JsonArray();
             foreach (var type in types)
