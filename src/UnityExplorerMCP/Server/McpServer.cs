@@ -103,7 +103,7 @@ namespace UnityExplorerMCP.Server
                 catch (Exception ex)
                 {
                     if (_running)
-                        Debug.LogError($"[UnityExplorerMCP] Listener error: {ex}");
+                        McpLog.Error($"[UnityExplorerMCP] Listener error: {ex}");
                 }
             }
         }
@@ -144,7 +144,7 @@ namespace UnityExplorerMCP.Server
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[UnityExplorerMCP] Request handler error: {ex}");
+                McpLog.Error($"[UnityExplorerMCP] Request handler error: {ex}");
                 try
                 {
                     response.StatusCode = 500;
@@ -167,13 +167,13 @@ namespace UnityExplorerMCP.Server
             var session = new McpSession(sessionId, _tools);
             _sessions[sessionId] = session;
 
-            Debug.Log($"[UnityExplorerMCP] New SSE session: {sessionId}");
+            McpLog.Info($"[UnityExplorerMCP] New SSE session: {sessionId}");
 
             // This blocks until the session ends
             session.AttachSseStream(response);
 
             _sessions.TryRemove(sessionId, out _);
-            Debug.Log($"[UnityExplorerMCP] SSE session ended: {sessionId}");
+            McpLog.Info($"[UnityExplorerMCP] SSE session ended: {sessionId}");
         }
 
         void HandleMessage(HttpListenerRequest request, HttpListenerResponse response)
