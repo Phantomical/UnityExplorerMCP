@@ -8,7 +8,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Threading;
-using UnityEngine;
 using UnityExplorerMCP.Tools;
 
 namespace UnityExplorerMCP.Server
@@ -87,7 +86,7 @@ namespace UnityExplorerMCP.Server
             }
             catch (Exception ex)
             {
-                Debug.Log($"[UnityExplorerMCP] SSE stream ended for session {Id}: {ex.Message}");
+                McpLog.Info($"[UnityExplorerMCP] SSE stream ended for session {Id}: {ex.Message}");
             }
             finally
             {
@@ -299,7 +298,7 @@ namespace UnityExplorerMCP.Server
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[UnityExplorerMCP] SessionContext.Closed handler threw: {ex}");
+                McpLog.Warn($"[UnityExplorerMCP] SessionContext.Closed handler threw: {ex}");
             }
         }
     }

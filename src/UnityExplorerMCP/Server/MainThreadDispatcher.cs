@@ -14,12 +14,23 @@ namespace UnityExplorerMCP.Server
         static MainThreadDispatcher _instance;
         public static MainThreadDispatcher Instance => _instance;
 
+        static int _mainThreadId = -1;
+
+        /// <summary>
+        /// True when called on the Unity main thread. False before Initialize.
+        /// </summary>
+        public static bool IsMainThread => _mainThreadId == Thread.CurrentThread.ManagedThreadId;
+
         readonly ConcurrentQueue<Action> _queue = new();
 
+        /// <summary>
+        /// Must be called from the Unity main thread.
+        /// </summary>
         public static void Initialize(GameObject parent)
         {
             if (_instance != null)
                 return;
+            _mainThreadId = Thread.CurrentThread.ManagedThreadId;
             _instance = parent.AddComponent<MainThreadDispatcher>();
         }
 
