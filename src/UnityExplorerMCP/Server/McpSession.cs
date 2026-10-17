@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.IO;
-using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -24,7 +23,7 @@ namespace UnityExplorerMCP.Server
         readonly ToolRegistry _tools;
         readonly ConcurrentQueue<string> _outgoing = new();
         readonly ManualResetEventSlim _outgoingSignal = new(false);
-        HttpListenerResponse _sseResponse;
+        Stream _sseStream;
         StreamWriter _sseWriter;
 
         static readonly JsonSerializerOptions SerializerOptions = new()
@@ -39,20 +38,13 @@ namespace UnityExplorerMCP.Server
         }
 
         /// <summary>
-        /// Attach the SSE response stream. Called when the client GETs /sse.
+        /// Attach the SSE response body stream. Called when the client GETs /sse.
         /// This method blocks the calling thread and writes SSE events until closed.
         /// </summary>
-        public void AttachSseStream(HttpListenerResponse response)
+        public void AttachSseStream(Stream stream)
         {
-            _sseResponse = response;
-            response.ContentType = "text/event-stream";
-            response.Headers.Add("Cache-Control", "no-cache");
-            response.Headers.Add("Connection", "keep-alive");
-            response.Headers.Add("Access-Control-Allow-Origin", "*");
-            _sseWriter = new StreamWriter(response.OutputStream, new UTF8Encoding(false))
-            {
-                AutoFlush = true,
-            };
+            _sseStream = stream;
+            _sseWriter = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
 
             // Send the endpoint event telling the client where to POST messages
             SendSseEvent("endpoint", $"/message?sessionId={Id}");
@@ -289,7 +281,7 @@ namespace UnityExplorerMCP.Server
             catch { }
             try
             {
-                _sseResponse?.Close();
+                _sseStream?.Close();
             }
             catch { }
             try

@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using UnityEngine;
 using UnityExplorerMCP.Tools;
@@ -14,11 +17,14 @@ namespace UnityExplorerMCP.Server
     /// </summary>
     public class McpServer
     {
+        // Idle keep-alive connections are dropped after this long.
+        const int IdleTimeoutMs = 120_000;
+
         readonly int _port;
         readonly ToolRegistry _tools;
         readonly ConcurrentDictionary<string, McpSession> _sessions = new();
-        HttpListener _listener;
-        Thread _listenerThread;
+        readonly ConcurrentDictionary<TcpClient, byte> _connections = new();
+        readonly List<TcpListener> _listeners = new();
         volatile bool _running;
 
         public McpServer(int port, ToolRegistry tools)
@@ -32,71 +38,87 @@ namespace UnityExplorerMCP.Server
             if (_running)
                 return;
 
-            _listener = new HttpListener();
-            _listener.Prefixes.Add($"http://+:{_port}/");
             _running = true;
 
-            try
-            {
-                _listener.Start();
-            }
-            catch (HttpListenerException ex)
-            {
-                // Fallback to localhost-only if wildcard binding fails (requires admin on Windows)
-                Debug.LogWarning(
-                    $"[UnityExplorerMCP] Could not bind to +:{_port} ({ex.Message}), falling back to localhost"
-                );
-                _listener = new HttpListener();
-                _listener.Prefixes.Add($"http://localhost:{_port}/");
-                _listener.Start();
-            }
-
-            _listenerThread = new Thread(ListenLoop)
-            {
-                Name = "McpServer-Listener",
-                IsBackground = true,
-            };
-            _listenerThread.Start();
+            // Request handling deliberately avoids the ThreadPool (which Mono's
+            // HttpListener and async sockets depend on): other mods can starve
+            // it, and SSE sessions would hold pool threads indefinitely.
+            StartListener(IPAddress.Loopback, required: true);
+            StartListener(IPAddress.IPv6Loopback, required: false);
 
             Debug.Log($"[UnityExplorerMCP] MCP server started on port {_port}");
+        }
+
+        void StartListener(IPAddress address, bool required)
+        {
+            var listener = new TcpListener(address, _port);
+            try
+            {
+                listener.Start();
+            }
+            catch (SocketException ex) when (!required)
+            {
+                Debug.LogWarning(
+                    $"[UnityExplorerMCP] Could not listen on {address}:{_port}: {ex.Message}"
+                );
+                return;
+            }
+
+            _listeners.Add(listener);
+            new Thread(() => ListenLoop(listener))
+            {
+                Name = $"McpServer-Listener ({address})",
+                IsBackground = true,
+            }.Start();
         }
 
         public void Stop()
         {
             _running = false;
 
+            foreach (var listener in _listeners)
+            {
+                try
+                {
+                    listener.Stop();
+                }
+                catch { }
+            }
+            _listeners.Clear();
+
             foreach (var session in _sessions.Values)
                 session.Close();
             _sessions.Clear();
 
-            try
+            foreach (var client in _connections.Keys)
             {
-                _listener?.Stop();
+                try
+                {
+                    client.Close();
+                }
+                catch { }
             }
-            catch { }
-            try
-            {
-                _listener?.Close();
-            }
-            catch { }
+            _connections.Clear();
 
             Debug.Log("[UnityExplorerMCP] MCP server stopped");
         }
 
-        void ListenLoop()
+        void ListenLoop(TcpListener listener)
         {
             while (_running)
             {
                 try
                 {
-                    var context = _listener.GetContext();
-                    ThreadPool.QueueUserWorkItem(_ => HandleRequest(context));
+                    var client = listener.AcceptTcpClient();
+                    _connections[client] = 0;
+                    new Thread(() => HandleConnection(client))
+                    {
+                        Name = "McpServer-Connection",
+                        IsBackground = true,
+                    }.Start();
                 }
-                catch (HttpListenerException) when (!_running)
-                {
-                    // Expected when stopping
-                }
-                catch (ObjectDisposedException) when (!_running)
+                catch (Exception ex)
+                    when (!_running && ex is SocketException or ObjectDisposedException)
                 {
                     // Expected when stopping
                 }
@@ -108,58 +130,96 @@ namespace UnityExplorerMCP.Server
             }
         }
 
-        void HandleRequest(HttpListenerContext context)
+        void HandleConnection(TcpClient client)
         {
-            var request = context.Request;
-            var response = context.Response;
+            try
+            {
+                client.NoDelay = true;
+                var network = client.GetStream();
+                network.ReadTimeout = IdleTimeoutMs;
+                var input = new BufferedStream(network);
 
+                while (_running)
+                {
+                    var request = MiniHttp.ReadRequest(input);
+                    if (request == null)
+                        break;
+
+                    if (!HandleRequest(request, network))
+                        break;
+                }
+            }
+            catch (IOException)
+            {
+                // Client disconnected or idle timeout
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception ex)
+            {
+                if (_running)
+                    McpLog.Error($"[UnityExplorerMCP] Connection error: {ex}");
+            }
+            finally
+            {
+                _connections.TryRemove(client, out _);
+                try
+                {
+                    client.Close();
+                }
+                catch { }
+            }
+        }
+
+        /// <summary>
+        /// Handle a single request. Returns whether the connection may be reused.
+        /// </summary>
+        bool HandleRequest(HttpRequest request, Stream output)
+        {
             try
             {
                 // Handle CORS preflight
-                if (request.HttpMethod == "OPTIONS")
+                if (request.Method == "OPTIONS")
                 {
-                    SetCorsHeaders(response);
-                    response.StatusCode = 204;
-                    response.Close();
-                    return;
+                    MiniHttp.WriteResponse(output, 204, request.KeepAlive);
+                    return request.KeepAlive;
                 }
 
-                SetCorsHeaders(response);
-
-                string path = request.Url.AbsolutePath.TrimEnd('/');
+                string path = request.Path.TrimEnd('/');
 
                 switch (path)
                 {
                     case "/sse":
-                        HandleSseConnect(request, response);
-                        break;
+                        HandleSseConnect(request, output);
+                        return false;
                     case "/message":
-                        HandleMessage(request, response);
-                        break;
+                        HandleMessage(request, output);
+                        return request.KeepAlive;
                     default:
-                        response.StatusCode = 404;
-                        response.Close();
-                        break;
+                        MiniHttp.WriteResponse(output, 404, request.KeepAlive);
+                        return request.KeepAlive;
                 }
+            }
+            catch (IOException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
                 McpLog.Error($"[UnityExplorerMCP] Request handler error: {ex}");
                 try
                 {
-                    response.StatusCode = 500;
-                    response.Close();
+                    MiniHttp.WriteResponse(output, 500, false);
                 }
                 catch { }
+                return false;
             }
         }
 
-        void HandleSseConnect(HttpListenerRequest request, HttpListenerResponse response)
+        void HandleSseConnect(HttpRequest request, Stream output)
         {
-            if (request.HttpMethod != "GET")
+            if (request.Method != "GET")
             {
-                response.StatusCode = 405;
-                response.Close();
+                MiniHttp.WriteResponse(output, 405, false);
                 return;
             }
 
@@ -169,63 +229,61 @@ namespace UnityExplorerMCP.Server
 
             McpLog.Info($"[UnityExplorerMCP] New SSE session: {sessionId}");
 
-            // This blocks until the session ends
-            session.AttachSseStream(response);
-
-            _sessions.TryRemove(sessionId, out _);
-            McpLog.Info($"[UnityExplorerMCP] SSE session ended: {sessionId}");
+            try
+            {
+                // This blocks until the session ends
+                session.AttachSseStream(MiniHttp.BeginEventStream(output));
+            }
+            finally
+            {
+                session.Close();
+                _sessions.TryRemove(sessionId, out _);
+                McpLog.Info($"[UnityExplorerMCP] SSE session ended: {sessionId}");
+            }
         }
 
-        void HandleMessage(HttpListenerRequest request, HttpListenerResponse response)
+        void HandleMessage(HttpRequest request, Stream output)
         {
-            if (request.HttpMethod != "POST")
+            if (request.Method != "POST")
             {
-                response.StatusCode = 405;
-                response.Close();
+                MiniHttp.WriteResponse(output, 405, request.KeepAlive);
                 return;
             }
 
-            string sessionId = request.QueryString["sessionId"];
+            request.Query.TryGetValue("sessionId", out string sessionId);
             if (
                 string.IsNullOrEmpty(sessionId)
                 || !_sessions.TryGetValue(sessionId, out var session)
             )
             {
-                response.StatusCode = 400;
-                WriteText(response, "Invalid or missing sessionId");
+                MiniHttp.WriteResponse(
+                    output,
+                    400,
+                    request.KeepAlive,
+                    "text/plain; charset=utf-8",
+                    "Invalid or missing sessionId"
+                );
                 return;
             }
 
             if (!session.IsAlive)
             {
-                response.StatusCode = 410;
-                WriteText(response, "Session is closed");
+                MiniHttp.WriteResponse(
+                    output,
+                    410,
+                    request.KeepAlive,
+                    "text/plain; charset=utf-8",
+                    "Session is closed"
+                );
                 return;
             }
 
-            string body;
-            using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
-                body = reader.ReadToEnd();
+            string body = Encoding.UTF8.GetString(request.Body);
 
+            // The reply goes out over SSE, so acknowledge first; sync tools
+            // block this thread until the main thread has run them.
+            MiniHttp.WriteResponse(output, 202, request.KeepAlive);
             session.HandleMessage(body);
-
-            response.StatusCode = 202;
-            response.Close();
-        }
-
-        static void SetCorsHeaders(HttpListenerResponse response)
-        {
-            response.Headers.Add("Access-Control-Allow-Origin", "*");
-            response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-            response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
-        }
-
-        static void WriteText(HttpListenerResponse response, string text)
-        {
-            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(text);
-            response.ContentLength64 = bytes.Length;
-            response.OutputStream.Write(bytes, 0, bytes.Length);
-            response.Close();
         }
     }
 }
