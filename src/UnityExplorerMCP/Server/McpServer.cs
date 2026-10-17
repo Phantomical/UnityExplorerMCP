@@ -184,7 +184,7 @@ namespace UnityExplorerMCP.Server
                     return request.KeepAlive;
                 }
 
-                string path = request.Path.TrimEnd('/');
+                string path = request.Path.TrimEnd(new[] { '/' });
 
                 switch (path)
                 {

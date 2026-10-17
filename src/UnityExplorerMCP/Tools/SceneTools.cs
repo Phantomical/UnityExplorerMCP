@@ -235,8 +235,8 @@ namespace UnityExplorerMCP.Tools
                 return McpProtocol.ToolError("Path is required");
 
             // Normalize path
-            string path = args.Path.TrimStart('/');
-            string[] parts = path.Split('/');
+            string path = args.Path.TrimStart(new[] { '/' });
+            string[] parts = path.Split(new[] { '/' });
 
             List<GameObject[]> rootSets = new();
             if (args.SceneHandle.HasValue)

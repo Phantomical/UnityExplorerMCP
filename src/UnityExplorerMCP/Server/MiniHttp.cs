@@ -45,7 +45,7 @@ namespace UnityExplorerMCP.Server
             if (requestLine == null)
                 return null;
 
-            var parts = requestLine.Split(' ');
+            var parts = requestLine.Split(new[] { ' ' });
             if (parts.Length != 3)
                 throw new InvalidDataException($"Malformed request line: {requestLine}");
 
@@ -182,7 +182,7 @@ namespace UnityExplorerMCP.Server
             if (q < 0)
                 return;
 
-            foreach (var pair in target.Substring(q + 1).Split('&'))
+            foreach (var pair in target.Substring(q + 1).Split(new[] { '&' }))
             {
                 if (pair.Length == 0)
                     continue;

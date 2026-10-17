@@ -110,8 +110,8 @@ namespace UnityExplorerMCP.Serialization
 
         static float[] ParseFloats(string value)
         {
-            value = value.Trim().TrimStart('(').TrimEnd(')');
-            string[] parts = value.Split(',');
+            value = value.Trim().TrimStart(new[] { '(' }).TrimEnd(new[] { ')' });
+            string[] parts = value.Split(new[] { ',' });
             var floats = new float[parts.Length];
             for (int i = 0; i < parts.Length; i++)
                 floats[i] = float.Parse(parts[i].Trim(), CultureInfo.InvariantCulture);
