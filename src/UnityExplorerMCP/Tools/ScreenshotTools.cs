@@ -34,6 +34,11 @@ namespace UnityExplorerMCP.Tools
                 "Max height in pixels. Image will be downscaled to fit while preserving aspect ratio."
             )]
             public int? MaxHeight { get; set; }
+
+            [McpParam(
+                "Hide the developer console and UnityExplorer UI while capturing (default true)."
+            )]
+            public bool? HideOverlays { get; set; }
         }
 
         #endregion
@@ -52,7 +57,16 @@ namespace UnityExplorerMCP.Tools
             Action<McpProtocol.ToolCallResult> callback
         )
         {
-            // 1. Wait until end of frame so the screen has been fully rendered
+            // 1. Optionally hide overlays, then wait a frame so the hidden
+            //    state is rendered before we capture.
+            ScreenOverlays.State overlays = null;
+            if (args.HideOverlays ?? true)
+            {
+                overlays = ScreenOverlays.Hide();
+                yield return null;
+            }
+
+            // Wait until end of frame so the screen has been fully rendered
             yield return new WaitForEndOfFrame();
 
             // 2. Determine target size
@@ -73,6 +87,8 @@ namespace UnityExplorerMCP.Tools
             cmd.Blit(BuiltinRenderTextureType.CurrentActive, rt);
             Graphics.ExecuteCommandBuffer(cmd);
             cmd.Release();
+
+            ScreenOverlays.Restore(overlays);
 
             // 4. Schedule an AsyncGPUReadback from the render target
             var request = AsyncGPUReadback.Request(rt, 0, TextureFormat.RGBA32);

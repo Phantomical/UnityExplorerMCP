@@ -17,6 +17,10 @@ namespace UnityExplorerMCP
         ToolRegistry _tools;
         ObjectRegistry.ObjectRegistry _registry;
 
+        // Keep the development-build console hidden; it pops up on every exception.
+        bool _hideDeveloperConsole = true;
+        bool _configLoaded;
+
         void Awake()
         {
             if (_instance != null)
@@ -41,6 +45,19 @@ namespace UnityExplorerMCP
             Debug.Log($"[UnityExplorerMCP] Plugin initialized, MCP server on port {port}");
         }
 
+        void LateUpdate()
+        {
+            // GameDatabase isn't loaded yet when Instantly addons start.
+            if (!_configLoaded && GameDatabase.Instance != null && GameDatabase.Instance.IsReady())
+            {
+                _configLoaded = true;
+                ReadConfig();
+            }
+
+            if (_hideDeveloperConsole && Debug.developerConsoleVisible)
+                Debug.developerConsoleVisible = false;
+        }
+
         void OnDestroy()
         {
             _server?.Stop();
@@ -59,6 +76,20 @@ namespace UnityExplorerMCP
             new LogTools(_tools).Register();
             new RaycastTools(_registry, _tools).Register();
             new ScreenshotTools(_tools).Register();
+        }
+
+        void ReadConfig()
+        {
+            try
+            {
+                var nodes = GameDatabase.Instance.GetConfigNodes("UNITY_EXPLORER_MCP");
+                if (nodes.Length > 0)
+                    nodes[0].TryGetValue("hideDeveloperConsole", ref _hideDeveloperConsole);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[UnityExplorerMCP] Could not read config: {ex.Message}");
+            }
         }
 
         static int ReadPort()
