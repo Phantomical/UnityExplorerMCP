@@ -81,14 +81,34 @@ namespace UnityExplorerMCP.Tools
                 out int targetH
             );
 
-            // 3. Blit from the screen into an appropriately sized render target
-            var rt = RenderTexture.GetTemporary(targetW, targetH, 0, RenderTextureFormat.ARGB32);
+            // 3. Copy the screen into a full-size render target. Blitting the
+            //    backbuffer is a plain copy that ignores scale/offset, so the
+            //    downscale and flip happen in a separate RT-to-RT blit.
+            var screenRt = RenderTexture.GetTemporary(
+                screenW,
+                screenH,
+                0,
+                RenderTextureFormat.ARGB32
+            );
             var cmd = new CommandBuffer();
-            cmd.Blit(BuiltinRenderTextureType.CurrentActive, rt);
+            cmd.Blit(BuiltinRenderTextureType.CurrentActive, screenRt);
             Graphics.ExecuteCommandBuffer(cmd);
             cmd.Release();
 
             ScreenOverlays.Restore(overlays);
+
+            // The backbuffer is stored top-down on D3D-like APIs while render
+            // textures (and the PNG encoder) expect bottom-up rows, so flip Y.
+            var rt = RenderTexture.GetTemporary(targetW, targetH, 0, RenderTextureFormat.ARGB32);
+            rt.filterMode = FilterMode.Bilinear;
+            screenRt.filterMode = FilterMode.Bilinear;
+            var prevActive = RenderTexture.active;
+            if (SystemInfo.graphicsUVStartsAtTop)
+                Graphics.Blit(screenRt, rt, new Vector2(1f, -1f), new Vector2(0f, 1f));
+            else
+                Graphics.Blit(screenRt, rt);
+            RenderTexture.active = prevActive;
+            RenderTexture.ReleaseTemporary(screenRt);
 
             // 4. Schedule an AsyncGPUReadback from the render target
             var request = AsyncGPUReadback.Request(rt, 0, TextureFormat.RGBA32);
