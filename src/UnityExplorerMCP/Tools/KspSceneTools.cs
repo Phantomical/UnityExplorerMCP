@@ -241,13 +241,16 @@ namespace UnityExplorerMCP.Tools
         /// <summary>
         /// Run an action that is expected to start a scene load, then wait for
         /// that load (and any loads it chains into) to complete. The trigger
-        /// returns an error message, or null if it started the load.
+        /// returns an error message, or null if it started the load. Actions
+        /// that request the load a few frames later can pass a grace period to
+        /// wait for the request.
         /// </summary>
-        IEnumerator RunSceneChange(
+        internal IEnumerator RunSceneChange(
             string action,
             float? timeoutSeconds,
             Func<string> trigger,
-            Action<McpProtocol.ToolCallResult> callback
+            Action<McpProtocol.ToolCallResult> callback,
+            float requestGraceSeconds = 0f
         )
         {
             if (SceneLoadPending)
@@ -269,6 +272,13 @@ namespace UnityExplorerMCP.Tools
                 callback(McpProtocol.ToolError(error));
                 yield break;
             }
+
+            float graceStart = Time.realtimeSinceStartup;
+            while (
+                _requestSeq == startSeq
+                && Time.realtimeSinceStartup - graceStart < requestGraceSeconds
+            )
+                yield return null;
 
             if (_requestSeq == startSeq)
             {

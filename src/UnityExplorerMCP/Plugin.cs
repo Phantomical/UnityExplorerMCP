@@ -76,7 +76,9 @@ namespace UnityExplorerMCP
             new LogTools(_tools).Register();
             new RaycastTools(_registry, _tools).Register();
             new ScreenshotTools(_tools).Register();
-            new KspSceneTools(_tools).Register();
+            var kspSceneTools = new KspSceneTools(_tools);
+            kspSceneTools.Register();
+            new KspEditorTools(_tools, kspSceneTools).Register();
         }
 
         void ReadConfig()
