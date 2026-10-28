@@ -5,4 +5,5 @@
     <BuildType Name="Release" />
   </Configurations>
   <Project Path="src/UnityExplorerMCP/UnityExplorerMCP.csproj" />
+  <Project Path="src/UnityExplorerMCP.Proxy/UnityExplorerMCP.Proxy.csproj" />
 </Solution>

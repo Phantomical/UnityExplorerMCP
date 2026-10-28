@@ -37,6 +37,7 @@ jobs:
 
       - run: dotnet restore
       - run: dotnet build -c Release
+      - run: dotnet publish src/UnityExplorerMCP.Proxy -c Release -r win-x64
 
       - name: Copy Files to Staging
         shell: bash

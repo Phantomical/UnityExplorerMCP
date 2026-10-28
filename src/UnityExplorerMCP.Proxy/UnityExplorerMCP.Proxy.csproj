@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>unityexplorer-proxy</AssemblyName>
+    <RootNamespace>UnityExplorerMCP.Proxy</RootNamespace>
+    <TargetFramework>net8.0</TargetFramework>
+    <!-- Run on whatever newer runtime is installed. -->
+    <RollForward>Major</RollForward>
+
+    <Description>stdio MCP proxy that reconnects to UnityExplorerMCP when KSP starts</Description>
+    <Product>UnityExplorerMCP</Product>
+
+    <LangVersion>latest</LangVersion>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- `dotnet publish -r win-x64` produces a standalone native exe. -->
+    <PublishAot>true</PublishAot>
+    <OptimizationPreference>Size</OptimizationPreference>
+    <Configurations>Debug;Release;Profiling</Configurations>
+  </PropertyGroup>
+
+  <!-- Ship the published exe (but not its large pdb) alongside the mod. -->
+  <Target Name="CopyExeToGameData" AfterTargets="Publish">
+    <Copy SourceFiles="$(PublishDir)$(AssemblyName).exe" DestinationFolder="$(ProjectRootDir)GameData/UnityExplorerMCP" />
+  </Target>
+</Project>
