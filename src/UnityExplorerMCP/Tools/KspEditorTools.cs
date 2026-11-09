@@ -460,13 +460,13 @@ namespace UnityExplorerMCP.Tools
                 GetPart
             );
 
-            _tools.Register<AddPartParams>(
+            _tools.RegisterCoroutine<AddPartParams>(
                 "ksp_editor_add_part",
                 "Editor only. Add a part to the ship, like dragging it from the parts list and dropping it on another part. Attach it either to a free attach node of the parent (parentNode, optionally node) or to the parent's surface (surface). The first part of an empty ship becomes the root part. Supports radial/mirror symmetry.",
                 AddPart
             );
 
-            _tools.Register<MovePartParams>(
+            _tools.RegisterCoroutine<MovePartParams>(
                 "ksp_editor_move_part",
                 "Editor only. Detach a part (with everything attached to it) and re-attach it somewhere else on the ship, like picking it up and dropping it. If the part has symmetry counterparts they are removed and recreated according to the symmetry parameter. The root part cannot be moved.",
                 MovePart
@@ -1104,8 +1104,59 @@ namespace UnityExplorerMCP.Tools
 
         #region Part Placement
 
-        McpProtocol.ToolCallResult AddPart(AddPartParams args)
+        IEnumerator AddPart(AddPartParams args, Action<McpProtocol.ToolCallResult> callback)
         {
+            var result = BeginAddPart(args, out var placement);
+            if (placement != null)
+            {
+                for (int i = 0; i < StartWaitFrames && !AllStarted(placement.Placed); i++)
+                    yield return null;
+                result = FinishPlacement(placement);
+            }
+            callback(result);
+        }
+
+        IEnumerator MovePart(MovePartParams args, Action<McpProtocol.ToolCallResult> callback)
+        {
+            var result = BeginMovePart(args, out var placement);
+            if (placement != null)
+            {
+                for (int i = 0; i < StartWaitFrames && !AllStarted(placement.Placed); i++)
+                    yield return null;
+                result = FinishPlacement(placement);
+            }
+            callback(result);
+        }
+
+        /// <summary>A part that has been attached, with its symmetry counterparts.</summary>
+        sealed class Placement
+        {
+            public EditorLogic Editor;
+            public Part Part;
+            public PlacementSpec Spec;
+            public List<Part> Placed;
+        }
+
+        const int StartWaitFrames = 30;
+
+        static bool AllStarted(List<Part> parts) => parts.All(p => p == null || p.started);
+
+        /// <summary>
+        /// Parts create their staging icon in Part.Start, which runs after they are created. The
+        /// editor sorts held icons into stages when a part is placed, so the icons of parts created
+        /// and placed in the same frame are never staged. Sort again once the parts have started.
+        /// </summary>
+        static McpProtocol.ToolCallResult FinishPlacement(Placement p)
+        {
+            if (EditorLogic.fetch != p.Editor || p.Part == null)
+                return McpProtocol.ToolError("The editor closed before the part was placed.");
+            StageManager.Instance?.OnEditorPartPlaced(p.Part);
+            return McpProtocol.ToolSuccess(PlacementResult(p.Editor, p.Part, p.Spec, p.Placed));
+        }
+
+        McpProtocol.ToolCallResult BeginAddPart(AddPartParams args, out Placement placement)
+        {
+            placement = null;
             string error = CheckEditor(out var editor);
             AvailablePart ap = null;
             if (error == null)
@@ -1175,8 +1226,14 @@ namespace UnityExplorerMCP.Tools
                 return McpProtocol.ToolError(error);
             }
 
-            var placed = AttachWithSymmetry(editor, part, attach, spec);
-            return McpProtocol.ToolSuccess(PlacementResult(editor, part, spec, placed));
+            placement = new Placement
+            {
+                Editor = editor,
+                Part = part,
+                Spec = spec,
+                Placed = AttachWithSymmetry(editor, part, attach, spec),
+            };
+            return null;
         }
 
         McpProtocol.ToolCallResult AddRootPart(
@@ -1248,8 +1305,9 @@ namespace UnityExplorerMCP.Tools
             return part;
         }
 
-        McpProtocol.ToolCallResult MovePart(MovePartParams args)
+        McpProtocol.ToolCallResult BeginMovePart(MovePartParams args, out Placement placement)
         {
+            placement = null;
             string error = CheckEditor(out var editor);
             Part part = null,
                 parent = null;
@@ -1327,8 +1385,17 @@ namespace UnityExplorerMCP.Tools
                 editor.selectedPart = null;
             }
 
-            var placed = AttachWithSymmetry(editor, part, attach, spec);
-            return McpProtocol.ToolSuccess(PlacementResult(editor, part, spec, placed));
+            // detachPart clears potentialParent, which createSymmetry needs.
+            part.potentialParent = parent;
+
+            placement = new Placement
+            {
+                Editor = editor,
+                Part = part,
+                Spec = spec,
+                Placed = AttachWithSymmetry(editor, part, attach, spec),
+            };
+            return null;
         }
 
         static string CheckSymmetry(PlacementSpec spec)
